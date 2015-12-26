@@ -1,0 +1,8 @@
+temp/
+Debug/
+log/
+*.pdb
+*.exp
+*.ilk
+635*.dll
+*.opendb
