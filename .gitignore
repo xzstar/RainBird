@@ -1,8 +1,14 @@
 temp/
 Debug/
 log/
+Release/
 *.pdb
 *.exp
 *.ilk
-635*.dll
+*.dll
 *.opendb
+.suo
+*.sdf
+ipch/
+dll/
+dll_V1/
