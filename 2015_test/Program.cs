@@ -30,6 +30,44 @@ namespace ConsoleProxy
         }
     }
 
+    class FileUtils
+    {
+        public const string FILE_PATH_HEAD = "C:\\work\\";
+        public const string FILE_PATH_HEAD_TEST = "C:\\work\\Test";
+
+        public const string ConfigName = "Config.txt";
+
+        public static string getConfigFilePath()
+        {
+            if (Program.isTest == true)
+                return FILE_PATH_HEAD_TEST + ConfigName;
+            else
+                return FILE_PATH_HEAD + ConfigName;
+        }
+    }
+
+    class Config
+    {
+
+        public string user;
+        public string password;
+
+        public static Config loadConfig()
+        {
+            Config config = null;
+            try
+            {
+                string text = File.ReadAllText(FileUtils.getConfigFilePath());
+                config = JsonConvert.DeserializeObject<Config>(text);
+            }
+            catch (Exception e)
+            {
+
+            }
+            return config;
+        }
+    }
+
     public class Log
     {
         public static void log(string LogStr)
@@ -450,21 +488,20 @@ namespace ConsoleProxy
                     Console.WriteLine(Program.LogTitle + "请重新选择");
                     goto R;
             }
-            //Console.WriteLine("请输入帐号:");
-            if (isTest)
+            
+            Config config = Config.loadConfig();
+            if(config == null)
             {
-                trader.Investor = quoter.Investor ="043213"; //Console.ReadLine();
-                                                               //Console.WriteLine("请输入密码:");
-                trader.Password = quoter.Password = "xiezhestar";// Console.ReadLine();
+                Console.WriteLine("请输入帐号:");
+                trader.Investor = Console.ReadLine();
+                Console.WriteLine("请输入密码:");
+                trader.Password = Console.ReadLine();
             }
             else
             {
-                trader.Investor = quoter.Investor = "10330177";// "043213"; //Console.ReadLine();
-                                                               //Console.WriteLine("请输入密码:");
-                trader.Password = quoter.Password = "525280";// "xiezhestar";// Console.ReadLine();
-
+                trader.Investor = quoter.Investor = config.user;
+                trader.Password = quoter.Password = config.password;
             }
-           
 
             quoter.OnFrontConnected += (sender, e) =>
             {
