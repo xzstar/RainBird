@@ -5,8 +5,9 @@ using Quote2015;
 using Trade2015;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
-using System.Xml.Serialization;
+using System.Collections.Concurrent;
+using Newtonsoft.Json;
+using System.Text;
 
 namespace ConsoleProxy
 {
@@ -19,7 +20,7 @@ namespace ConsoleProxy
         public int holder = 0;
         public double highest;
         public double lowest;
-        public Boolean isToday = true;
+        public bool isToday = true;
         public InstrumentData()
         {   
             _highList = new LinkedList<double>();
@@ -36,8 +37,43 @@ namespace ConsoleProxy
             StreamWriter sw = null;
             try
             {
-                LogStr = "["+DateTime.Now.ToLocalTime().ToString() + "]" + LogStr+"\n";
-                sw = new StreamWriter("C:\\work\\Log.txt", true);
+                LogStr = Program.LogTitle + "[" +DateTime.Now.ToLocalTime().ToString() + "]" + LogStr+"\n";
+                if(Program.isTest == true)
+                {
+                    sw = new StreamWriter("C:\\work\\TestLog.txt", true);
+                }
+                else
+                { 
+                 sw = new StreamWriter("C:\\work\\Log.txt", true);
+                }
+                sw.WriteLine(LogStr);
+            }
+            catch
+            {
+            }
+            finally
+            {
+                if (sw != null)
+                {
+                    sw.Close();
+                }
+            }
+        }
+
+        public static void logTrade(string LogStr)
+        {
+            StreamWriter sw = null;
+            try
+            {
+                LogStr = /*Program.LogTitle + "[" + DateTime.Now.ToLocalTime().ToString() + "]" +*/ LogStr + "\n";
+                if (Program.isTest == true)
+                {
+                    sw = new StreamWriter("C:\\work\\TestLogTrade.txt", true);
+                }
+                else
+                {
+                    sw = new StreamWriter("C:\\work\\LogTrade.txt", true);
+                }
                 sw.WriteLine(LogStr);
             }
             catch
@@ -53,11 +89,95 @@ namespace ConsoleProxy
         }
     }
 
+    public class Utils
+    {
+        public static bool isTradingTime(ExchangeStatusType type, DateTime dt)
+        {
+            if (/*type == ExchangeStatusType.Trading &&*/ dt.Hour!=8 && dt.Hour!=20)
+                    return true;
+            return false;
+        }
+
+
+    }
+    class InstrumentWatcher
+    {
+        static Trade sTrade;
+        static System.Threading.Timer timer;
+        static Dictionary<string, DateTime> lastUpdateTime = new Dictionary<string, DateTime>();
+        public static bool flag = true;
+        static object mylock = new object();
+
+        static string getInstumentName(string key)
+        {
+            char[] charArray = key.ToCharArray();
+            for(int i=0;i<key.Length;i++)
+            {
+                char ch = charArray[i];
+                if (ch >= '0' && ch <= '9')
+                    return key.Substring(0, i);
+            }
+            return key;
+        }
+
+        static void Excute(object obj)
+        {
+            Thread.CurrentThread.IsBackground = true;
+
+            lock (mylock)
+            {
+                if (!flag)
+                {
+                    return;
+                }
+
+                
+                foreach(string key in lastUpdateTime.Keys)
+                {
+                    DateTime last = lastUpdateTime[key];
+                    TimeSpan ts = DateTime.Now - last;
+                    string sub = getInstumentName(key);
+                    
+                    if(sTrade.DicExcStatus.ContainsKey(sub) == true && sTrade.DicExcStatus[sub] == ExchangeStatusType.Trading)
+                    { 
+                        if (ts.TotalSeconds>180)
+                        {
+                            Console.WriteLine("InstrumentWatcher Excute:{0} 最近一次获得数据时间为{1}，距离现在{2}秒", key, last.ToString(),ts.TotalSeconds);
+                            Log.log(string.Format("InstrumentWatcher Excute:{0} 最近一次获得数据时间为{1}，距离现在{2}秒", key, last.ToString(), ts.TotalSeconds));
+                        }
+                        else
+                        {
+                            Console.WriteLine("InstrumentWatcher Excute:{0} 最近一次获得数据时间为{1}，距离现在{2}秒", key, last.ToString(), ts.TotalSeconds);
+                        }
+                    }
+
+                }
+
+            }
+
+        }
+
+        public static void updateTime(string instrument, DateTime dt)
+        {
+            lock (mylock)
+            {
+                lastUpdateTime[instrument] = dt;
+            }
+        }
+
+        public static void Init(Trade trade)
+        {
+            sTrade = trade;
+            timer = new System.Threading.Timer(Excute, null, 0, 60000);
+        }
+    }
+
+
     class Program
     {
         static private string _inst;
-        private static int _TOTALSIZE = 6;
-
+        private static int _TOTALSIZE = 32;
+        private static int MINSPAN = 3;
         private static double _LastPrice = double.NaN;
 
         private static int _orderId;
@@ -68,11 +188,15 @@ namespace ConsoleProxy
         private static int BUY_CLOSETODAY = 4;
         private static int BUY_CLOSE = 41;
 
+        private static ConcurrentQueue<TradeItem> _tradeQueue = new ConcurrentQueue<TradeItem>();
+        public static bool isTest = true;
+        public static string LogTitle = isTest?"[测试]":"[正式]";
+        
 
         private static void operatord(Trade t, Quote q, int op, string inst)
         {
             //Console.WriteLine("操作start:{0}: {1}", op, inst);
-            Log.log(string.Format("操作start:{0}: {1}", op, inst));
+            Log.log(string.Format(Program.LogTitle+"操作start:{0}: {1}", op, inst));
             string operation = string.Empty;
  
 
@@ -152,10 +276,10 @@ namespace ConsoleProxy
                     //    Environment.Exit(0);
                     //    break;
             }
-            if (op >= 1 && op <= 4)
+            //if (op >= 1 && op <= 4)
             {
-                Console.WriteLine("操作:{0}: {1}", operation, inst);
-                Log.log(string.Format("操作:{0}: {1}", operation, inst));
+                Console.WriteLine(Program.LogTitle + "操作:{0}: {1}", operation, inst);
+                Log.log(string.Format(Program.LogTitle + "操作:{0}: {1}", operation, inst));
                 //Console.WriteLine("请选择委托类型: 1-限价  2-市价  3-FAK  4-FOK");
                 OrderType ot = OrderType.Limit;
                 /*switch (Console.ReadKey().KeyChar)
@@ -181,7 +305,7 @@ namespace ConsoleProxy
                         Thread.Sleep(200);
                         if (-1 != _orderId)
                         {
-                            Console.WriteLine("委托标识:" + _orderId);
+                            Console.WriteLine(Program.LogTitle + "委托标识:" + _orderId);
                             break;
                         }
                     }
@@ -189,6 +313,17 @@ namespace ConsoleProxy
             }
         }
 
+        private static void operatorInstrument(int op, string inst)
+        {
+            TradeItem tradeItem = new TradeItem(inst, op);
+
+            lock (_tradeQueue)
+            {
+                //Monitor.Wait(_tradeQueue);//暂时放弃调用线程对该资源的锁，让Consumer执行
+                _tradeQueue.Enqueue(tradeItem);//生成一个资源
+                Monitor.Pulse(_tradeQueue);//通知在Wait中阻塞的Consumer线程即将执行
+            }
+        }
 
         //输入：q1ctp /t1ctp /q2xspeed /t2speed
         private static void Main(string[] args)
@@ -199,7 +334,6 @@ namespace ConsoleProxy
             System.Object lockThis = new System.Object();
             Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
 
-
             //LinkedList<double> _highList = new LinkedList<double>();
             //LinkedList<double> _lowList = new LinkedList<double>();
             //double highest = 0;
@@ -207,22 +341,40 @@ namespace ConsoleProxy
         //int lastMin = -1;
         //int holder = 0;
         R:
-            Console.WriteLine("选择接口:\t1-CTP  2-xSpeed  3-Femas  4-股指仿真  5-外汇仿真  6-郑商商品期权仿真");
+            Console.WriteLine(Program.LogTitle + "选择接口:\t1-CTP  2-xSpeed  3-Femas  4-股指仿真  5-外汇仿真  6-郑商商品期权仿真");
             char c = '1';// Console.ReadKey(true).KeyChar;
 
             switch (c)
             {
                 case '1': //CTP
-                    trader = new Trade("ctp_trade_proxy.dll")
+                    if (isTest)
                     {
-                        Server = "tcp://180.168.146.187:10000",//" tcp://101.95.8.178:51205", 
-                        Broker = "9999"// "4040",
-                    };
-                    quoter = new Quote("ctp_quote_proxy.dll")
-                    {
-                        Server = "tcp://101.95.8.178:51213",
-                        Broker = "4040",
-                    };
+                        trader = new Trade("ctp_trade_proxy.dll")
+                        {
+                            Server = "tcp://180.168.146.187:10000", 
+                            Broker = "9999"// "4040",
+                        };
+                        quoter = new Quote("ctp_quote_proxy.dll")
+                        {
+
+                            Server = "tcp://180.168.146.187:10010",
+                            Broker = "9999",
+                        };
+
+                    }
+                    else { 
+                        trader = new Trade("ctp_trade_proxy.dll")
+                        {
+                            Server = "tcp://222.73.111.150:41205",//" tcp://101.95.8.178:51205", 
+                            Broker = "9080"// "9999"// "4040",
+                        };
+                        quoter = new Quote("ctp_quote_proxy.dll")
+                        {
+                        
+                            Server = "tcp://222.73.111.150:41213",//"tcp://101.95.8.178:51213",
+                            Broker = "9080",
+                        };
+                    }
                     //t = new Trade("ctp_trade_proxy.dll")
                     //{
                     //	Server = "tcp://211.95.40.130:51205", 
@@ -295,13 +447,24 @@ namespace ConsoleProxy
                     };
                     break;
                 default:
-                    Console.WriteLine("请重新选择");
+                    Console.WriteLine(Program.LogTitle + "请重新选择");
                     goto R;
             }
             //Console.WriteLine("请输入帐号:");
-            trader.Investor = quoter.Investor = "043213"; //Console.ReadLine();
-                                                //Console.WriteLine("请输入密码:");
-            trader.Password = quoter.Password = "xiezhestar";// Console.ReadLine();
+            if (isTest)
+            {
+                trader.Investor = quoter.Investor ="043213"; //Console.ReadLine();
+                                                               //Console.WriteLine("请输入密码:");
+                trader.Password = quoter.Password = "xiezhestar";// Console.ReadLine();
+            }
+            else
+            {
+                trader.Investor = quoter.Investor = "10330177";// "043213"; //Console.ReadLine();
+                                                               //Console.WriteLine("请输入密码:");
+                trader.Password = quoter.Password = "525280";// "xiezhestar";// Console.ReadLine();
+
+            }
+           
 
             quoter.OnFrontConnected += (sender, e) =>
             {
@@ -333,7 +496,19 @@ namespace ConsoleProxy
                     //Console.WriteLine("OnRtnTick:{0}", e.Tick.LastPrice);
                     //Console.WriteLine("OnRtnTick:{0}=>{1}=>{2}", e.Tick.UpdateTime, e.Tick.AskPrice, e.Tick.InstrumentID);
                     DateTime d1 = DateTime.Parse(e.Tick.UpdateTime);
+                    InstrumentWatcher.updateTime(e.Tick.InstrumentID, d1);
                     InstrumentData instrumentdata;
+
+                    //if (trader.DicExcStatus.ContainsKey(e.Tick.InstrumentID) == false)
+                    //{
+                    //    Console.WriteLine("OnRtnTick:{0} Not Containing TradingStatus {1}", e.Tick.InstrumentID, d1.ToString());
+                    //    return;
+                    //}
+                    //if (Utils.isTradingTime(trader.DicExcStatus[e.Tick.InstrumentID],d1) == false)
+                    //{
+                    //    Console.WriteLine("OnRtnTick:{0} Not Trading time {1}", e.Tick.InstrumentID, d1.ToString());
+                    //    return;
+                    //}
 
                     if (tradeData.TryGetValue(e.Tick.InstrumentID, out instrumentdata) == false)
                     {
@@ -345,7 +520,7 @@ namespace ConsoleProxy
                     LinkedList<double> _lowList = instrumentdata._lowList;
 
 
-                    if (instrumentdata.lastMin == -1 || (instrumentdata.lastMin != d1.Minute && d1.Minute % 3 == 0))
+                    if (instrumentdata.lastMin == -1 || (instrumentdata.lastMin != d1.Minute && d1.Minute % MINSPAN == 0))
                     {
                         //Console.WriteLine("OnRtnTick 目前记录数:{0} {1}", e.Tick.InstrumentID, _highList.Count);
                         _highList.AddLast(e.Tick.LastPrice);
@@ -363,7 +538,7 @@ namespace ConsoleProxy
                         foreach (double value in _highList)
                         {
                             //Console.WriteLine("品种{0} 最高:{1} 当前k线:{2}", e.Tick.InstrumentID, highest, value);
-                            Log.log(string.Format("品种{0} 最高:{1} 当前k线:{2}", e.Tick.InstrumentID, instrumentdata.highest, value));
+                            Log.log(string.Format(Program.LogTitle + "品种{0} 最高:{1} 当前k线:{2}", e.Tick.InstrumentID, instrumentdata.highest, value));
 
                             if (value > instrumentdata.highest)
                                 instrumentdata.highest = value;
@@ -378,7 +553,7 @@ namespace ConsoleProxy
                                 instrumentdata.lowest = value;
                         }
                         //Console.WriteLine("品种{0}新K线 最高:{1} 最低:{2}", e.Tick.InstrumentID, highest, lowest);
-                        Log.log(string.Format("品种{0}新K线 最高:{1} 最低:{2}", e.Tick.InstrumentID, instrumentdata.highest, instrumentdata.lowest));
+                        Log.log(string.Format(Program.LogTitle + "品种{0}新K线 最高:{1} 最低:{2}", e.Tick.InstrumentID, instrumentdata.highest, instrumentdata.lowest));
                     }
                     else
                     {
@@ -404,7 +579,7 @@ namespace ConsoleProxy
                     if (isTriggerHigh)
                     {
                         //Console.WriteLine("品种{0} 时间:{1} 触发新高:{2}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice);
-                        Log.log(string.Format("品种{0} 时间:{1} 触发新高:{2} 当前最高{3}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice, instrumentdata.highest));
+                        Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 触发新高:{2} 当前最高{3}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice, instrumentdata.highest));
                         // more than _totoalSize , can trade now
                         if (_highList.Count >= _TOTALSIZE && e.Tick.LastPrice > instrumentdata.highest)
                         {
@@ -412,18 +587,30 @@ namespace ConsoleProxy
                             if (instrumentdata.holder == 0)
                             {
                                 //open buy
-                                operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
+                                //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
+                                operatorInstrument(BUY_OPEN, e.Tick.InstrumentID);
                                 instrumentdata.holder = 1;
                                 instrumentdata.isToday = true;
+
+
                             }
                             else if (instrumentdata.holder == -1)
                             {
                                 //close sell and open buy
                                 if (instrumentdata.isToday)
-                                    operatord(trader, quoter, BUY_CLOSETODAY, e.Tick.InstrumentID);
+                                {
+                                    //operatord(trader, quoter, BUY_CLOSETODAY, e.Tick.InstrumentID);
+                                    operatorInstrument(BUY_CLOSETODAY, e.Tick.InstrumentID);
+
+                                }
                                 else
-                                    operatord(trader, quoter, BUY_CLOSE, e.Tick.InstrumentID);
-                                operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
+                                {
+                                    //operatord(trader, quoter, BUY_CLOSE, e.Tick.InstrumentID);
+                                    operatorInstrument(BUY_CLOSE, e.Tick.InstrumentID);
+
+                                }
+                                //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
+                                operatorInstrument(BUY_OPEN, e.Tick.InstrumentID);
                                 instrumentdata.holder = 1;
                                 instrumentdata.isToday = true;
                             }
@@ -435,7 +622,7 @@ namespace ConsoleProxy
                     if (isTriggerLow)
                     {
                         //Console.WriteLine("品种{0} 时间:{1} 触发新低:{2}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice);
-                        Log.log(string.Format("品种{0} 时间:{1} 触发新低:{2} 当前最低:{3}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice, instrumentdata.lowest));
+                        Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 触发新低:{2} 当前最低:{3}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice, instrumentdata.lowest));
 
                         // more than _totoalSize , can trade now
                         if (_lowList.Count >= _TOTALSIZE && e.Tick.LastPrice < instrumentdata.lowest)
@@ -444,7 +631,8 @@ namespace ConsoleProxy
                             if (instrumentdata.holder == 0)
                             {
                                 //open sell
-                                operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
+                                //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
+                                operatorInstrument(SELL_OPEN, e.Tick.InstrumentID);
                                 instrumentdata.holder = -1;
                                 instrumentdata.isToday = true;
                             }
@@ -452,10 +640,18 @@ namespace ConsoleProxy
                             {
                                 //close buy and open sell
                                 if (instrumentdata.isToday)
-                                    operatord(trader, quoter, SELL_CLOSETODAY, e.Tick.InstrumentID);
+                                {
+                                    //operatord(trader, quoter, SELL_CLOSETODAY, e.Tick.InstrumentID);
+                                    operatorInstrument(SELL_CLOSETODAY, e.Tick.InstrumentID);
+
+                                }
                                 else
-                                    operatord(trader, quoter, SELL_CLOSE, e.Tick.InstrumentID);
-                                operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
+                                {
+                                    //operatord(trader, quoter, SELL_CLOSE, e.Tick.InstrumentID);
+                                    operatorInstrument(SELL_CLOSE, e.Tick.InstrumentID);
+                                }
+                                //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
+                                operatorInstrument(SELL_OPEN, e.Tick.InstrumentID);
                                 instrumentdata.holder = -1;
                                 instrumentdata.isToday = true;
                             }
@@ -463,15 +659,30 @@ namespace ConsoleProxy
                     }
 
                     if (isTriggerHigh || isTriggerLow) { 
+                        
                         string fileNameSerialize = @"C:\work\trade.dat";//文件名称与路径
-                        Stream fStreamSerialize = new FileStream(fileNameSerialize, FileMode.OpenOrCreate, FileAccess.ReadWrite);
-                        BinaryFormatter binFormatSerialize = new BinaryFormatter();//创建二进制序列化器
-                        binFormatSerialize.Serialize(fStreamSerialize, tradeData);
+                        if (isTest)
+                        {
+                            fileNameSerialize = @"C:\work\TestTrade.dat";//文件名称与路径
+                        }
+
+                        string jsonString = JsonConvert.SerializeObject(tradeData);
+                        
+                        File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
+
+                        //Stream fs = new FileStream(fileNameSerialize, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+                        //byte[] data = new UTF8Encoding().GetBytes(jsonString);
+                        //fs.Write(data, 0, data.Length);
+                        //fs.Flush();
+                        //fs.Close();
+                        //BinaryFormatter binFormatSerialize = new BinaryFormatter();//创建二进制序列化器
+                        //binFormatSerialize.Serialize(fStreamSerialize, tradeData);
                         //fStreamSerialize.Close();
 
                         //XmlSerializer xmlFormat = new XmlSerializer(typeof(Dictionary<string, InstrumentData>));
                         //xmlFormat.Serialize(fStreamSerialize, tradeData);//序列化对象
-                        fStreamSerialize.Dispose();//关闭文件
+                        //fs.Dispose();//关闭文件
+                        //fs.Close();
                   }
                 }
             };
@@ -512,14 +723,23 @@ namespace ConsoleProxy
             };
             trader.OnRtnOrder += (sender, e) =>
             {
-                Console.WriteLine("OnRtnOrder:{0}", e.Value);
-                Log.log(string.Format("OnRtnOrder:{0}", e.Value));
+                Console.WriteLine("OnRtnOrder:{0}", e.Value.OrderID);
+                Log.log(string.Format("OnRtnOrder:{0}", e.Value.OrderID));
                 _orderId = e.Value.OrderID;
             };
             trader.OnRtnTrade += (sender, e) =>
             {
                 Console.WriteLine("OnRtnTrade:{0}", e.Value.TradeID);
-                Log.log(string.Format("OnRtnTrade:{0}", e.Value.TradeID));
+                Log.log(string.Format("OnRtnTrade:{0} OrderID {1}", e.Value.TradeID, e.Value.OrderID));
+                //成交 需要下委托单
+                string direction = e.Value.Direction == DirectionType.Buy ? "买" : "卖";
+                string offsetType = "开";
+                if (e.Value.Offset == OffsetType.Close)
+                    offsetType = "平";
+                else if (e.Value.Offset == OffsetType.CloseToday)
+                    offsetType = "平今";
+                Log.logTrade(string.Format("{0},{1},{2},{3},{4},{5}", e.Value.InstrumentID, e.Value.TradingDay, e.Value.TradeTime,
+                    e.Value.Price, e.Value.Volume, direction+offsetType));
             };
 
             trader.ReqConnect();
@@ -527,28 +747,49 @@ namespace ConsoleProxy
 
             if (!trader.IsLogin)
                 goto R;
+
+            TradeCenter tradeCenter = new TradeCenter(trader, quoter, _tradeQueue);
+            tradeCenter.start();
+
+            InstrumentWatcher.Init(trader);
+
             Console.WriteLine(trader.DicInstrumentField.Aggregate("\r\n合约", (cur, n) => cur + "\t" + n.Value.InstrumentID));
 
             //使用二进制序列化对象
             string fileName = @"C:\work\trade.dat";//文件名称与路径
-            Stream fStream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite);
-            BinaryFormatter binFormat = new BinaryFormatter();//创建二进制序列化器
-           fStream.Position = 0;//
+            if(isTest)
+                fileName = @"C:\work\TestTrade.dat";//文件名称与路径
             Dictionary<string, InstrumentData> tempData = null;
-            try {
-                tempData = (Dictionary<string, InstrumentData>)binFormat.Deserialize(fStream);//反序列化对象
-
-                //XmlSerializer xmlFormat = new XmlSerializer(typeof(Dictionary<string, InstrumentData>));
-                //tempData = (Dictionary<string, InstrumentData>) xmlFormat.Deserialize(fStream);//序列化对象
+            try
+            {
+                string text = File.ReadAllText(fileName);
+                tempData = JsonConvert.DeserializeObject<Dictionary<string, InstrumentData>>(text);
             }
-            catch(Exception e)
+            catch (Exception e)
             {
 
             }
-            finally
-            {
-                fStream.Dispose();
-            }
+
+
+           // Stream fStream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+           
+           // BinaryFormatter binFormat = new BinaryFormatter();//创建二进制序列化器
+           //fStream.Position = 0;//
+           // Dictionary<string, InstrumentData> tempData = null;
+           // try {
+           //     tempData = (Dictionary<string, InstrumentData>)binFormat.Deserialize(fStream);//反序列化对象
+
+           //     //XmlSerializer xmlFormat = new XmlSerializer(typeof(Dictionary<string, InstrumentData>));
+           //     //tempData = (Dictionary<string, InstrumentData>) xmlFormat.Deserialize(fStream);//序列化对象
+           // }
+           // catch(Exception e)
+           // {
+
+           // }
+           // finally
+           // {
+           //     fStream.Dispose();
+           // }
 
             if (tempData != null)
                 tradeData = tempData;
@@ -584,15 +825,38 @@ namespace ConsoleProxy
                 }
             }
 
-            string inst = string.Empty;
-            Console.WriteLine("请输入合约:");
-            inst = Console.ReadLine();
-            quoter.ReqSubscribeMarketData(inst);
+            //使用二进制序列化对象
+            fileName = @"C:\work\instrument.dat";//文件名称与路径
+            if (isTest)
+                fileName = @"C:\work\TestInstrument.dat";//文件名称与路径
+            List<string> instrumentList = null;
+            try
+            {
+                string text = File.ReadAllText(fileName);
+                instrumentList = JsonConvert.DeserializeObject<List<string>>(text);
+            }
+            catch (Exception e)
+            {
 
-            quoter.ReqSubscribeMarketData("m1605");
-            quoter.ReqSubscribeMarketData("SR605");
+            }
+
+            if(instrumentList == null || instrumentList.Count == 0)
+            {
+                string inst = string.Empty;
+                Console.WriteLine(Program.LogTitle + "请输入合约:");
+                inst = Console.ReadLine();
+                quoter.ReqSubscribeMarketData(inst);
+            }
+            else
+            {
+                foreach(string inst in instrumentList)
+                    quoter.ReqSubscribeMarketData(inst);
+            }
+
+        //quoter.ReqSubscribeMarketData("m1605");
+        //quoter.ReqSubscribeMarketData("SR605");
         Inst:
-            Console.WriteLine("q:退出  1-BK  2-SP  3-SK  4-BP  5-撤单");
+            Console.WriteLine(Program.LogTitle + "q:退出  1-BK  2-SP  3-SK  4-BP  5-撤单");
             Console.WriteLine("a-交易所状态  b-委托  c-成交  d-持仓  e-合约  f-权益 g-换合约");
 
             DirectionType dire = DirectionType.Buy;
@@ -647,20 +911,22 @@ namespace ConsoleProxy
                         + n.GetValue(trader.TradingAccount).ToString()));
                     break;
                 case 'g':
-                    Console.WriteLine("请输入合约:");
-                    inst = Console.ReadLine();
+                    Console.WriteLine(Program.LogTitle + "请输入合约:");
+                    string inst = Console.ReadLine();
                     quoter.ReqSubscribeMarketData(inst);
                     break;
                 case 'q':
                     quoter.ReqUserLogout();
                     trader.ReqUserLogout();
+                    tradeCenter.stop();
+                    InstrumentWatcher.flag = false;
                     Thread.Sleep(2000); //待接口处理后续操作
                     Environment.Exit(0);
                     break;
             }
             if (c >= '1' && c <= '4')
             {
-                Console.WriteLine("请选择委托类型: 1-限价  2-市价  3-FAK  4-FOK");
+                Console.WriteLine(Program.LogTitle + "请选择委托类型: 1-限价  2-市价  3-FAK  4-FOK");
                 OrderType ot = OrderType.Limit;
                 switch (Console.ReadKey().KeyChar)
                 {
@@ -674,22 +940,22 @@ namespace ConsoleProxy
                         ot = OrderType.FOK;
                         break;
                 }
-                MarketData tick;
-                if (quoter.DicTick.TryGetValue(inst, out tick))
-                {
-                    double price = dire == DirectionType.Buy ? tick.AskPrice : tick.BidPrice;
-                    _orderId = -1;
-                    Console.WriteLine(trader.ReqOrderInsert(inst, dire, offset, price, 1, pType: ot));
-                    for (int i = 0; i < 3; ++i)
-                    {
-                        Thread.Sleep(200);
-                        if (-1 != _orderId)
-                        {
-                            Console.WriteLine("委托标识:" + _orderId);
-                            break;
-                        }
-                    }
-                }
+                //MarketData tick;
+                //if (quoter.DicTick.TryGetValue(inst, out tick))
+                //{
+                //    double price = dire == DirectionType.Buy ? tick.AskPrice : tick.BidPrice;
+                //    _orderId = -1;
+                //    Console.WriteLine(trader.ReqOrderInsert(inst, dire, offset, price, 1, pType: ot));
+                //    for (int i = 0; i < 3; ++i)
+                //    {
+                //        Thread.Sleep(200);
+                //        if (-1 != _orderId)
+                //        {
+                //            Console.WriteLine(Program.LogTitle + "委托标识:" + _orderId);
+                //            break;
+                //        }
+                //    }
+                //}
             }
             goto Inst;
         }

@@ -533,7 +533,7 @@ DllExport int WINAPI ReqQryOrder()
 		}
 		return 0;
 	}
-	QryOrder();
+	return QryOrder();
 }
 DllExport int WINAPI ReqQryTrade()
 {
@@ -548,7 +548,7 @@ DllExport int WINAPI ReqQryTrade()
 		}
 		return 0;
 	}
-	QryTrade();
+	return QryTrade();
 }
 DllExport int WINAPI ReqQryPosition();
 DllExport int WINAPI ReqQryAccount();

@@ -474,7 +474,7 @@ namespace Trade2015
 		/// </summary>
 		/// <param name="lpFileName"> DLL 文件名 </param>
 		/// <returns> 函数库模块的句柄 </returns>
-		[DllImport("kernel32.dll")]
+		[DllImport("kernel32.dll", EntryPoint = "LoadLibrary", SetLastError = true)]
 		private static extern IntPtr LoadLibrary(string lpFileName);
 
 		/// <summary>
@@ -483,8 +483,8 @@ namespace Trade2015
 		/// <param name="hModule"> 包含需调用函数的函数库模块的句柄 </param>
 		/// <param name="lpProcName"> 调用函数的名称 </param>
 		/// <returns> 函数指针 </returns>
-		[DllImport("kernel32.dll")]
-		private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
+		[DllImport("kernel32.dll", EntryPoint = "GetProcAddress", SetLastError = true)]
+        private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
 
 		/// <summary>
 		///     原型是 : BOOL FreeLibrary(HMODULE hModule);
@@ -494,15 +494,17 @@ namespace Trade2015
 		[DllImport("kernel32", EntryPoint = "FreeLibrary", SetLastError = true)]
 		protected static extern bool FreeLibrary(IntPtr hModule);
 
-		/// <summary>
-		/// 
-		/// </summary>
-		/// <param name="pHModule"></param>
-		/// <param name="lpProcName"></param>
-		/// <param name="t"></param>
-		/// <returns></returns>
-		/// <exception cref="Exception"></exception>
-		private static Delegate Invoke(IntPtr pHModule, string lpProcName, Type t)
+        [DllImport("kernel32.dll")]
+        private static extern int GetLastError();
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="pHModule"></param>
+        /// <param name="lpProcName"></param>
+        /// <param name="t"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
+        private static Delegate Invoke(IntPtr pHModule, string lpProcName, Type t)
 		{
 			// 若函数库模块的句柄为空，则抛出异常 
 			if (pHModule == IntPtr.Zero)
@@ -801,16 +803,17 @@ namespace Trade2015
 		/// <exception cref="Exception"></exception>
 		protected void LoadDll(string pFile)
 		{
-			if (File.Exists(pFile))
+			if (File.Exists(Environment.CurrentDirectory + "\\" + pFile))
 			{
 				_file = DateTime.Now.Ticks + ".dll";
-				File.Copy(pFile, _file);
+				File.Copy(Environment.CurrentDirectory + "\\" + pFile, _file);
 
 				this._handle = LoadLibrary(_file); // Environment.CurrentDirectory + "\\" + pFile);
 			}
-			if (this._handle == IntPtr.Zero)
+            int errCode = Marshal.GetLastWin32Error();
+            if (this._handle == IntPtr.Zero)
 			{
-				throw (new Exception(String.Format(" 没有找到 :{0}.", Environment.CurrentDirectory + "\\" + pFile)));
+                throw (new Exception(String.Format(" 没有找到{0} :{1}.", errCode,Environment.CurrentDirectory + "\\" + pFile)));
 			}
 			Directory.CreateDirectory("log");
 		}
