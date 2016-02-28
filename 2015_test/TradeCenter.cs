@@ -16,11 +16,19 @@ namespace ConsoleProxy
     {
         public string mInstrument;
         public int mOperator;
+        public double mPrice;
 
         public TradeItem(String instrument,int operate)
         {
             mInstrument = instrument;
             mOperator = operate;
+            mPrice = 0;
+        }
+        public TradeItem(String instrument, int operate,double price)
+        {
+            mInstrument = instrument;
+            mOperator = operate;
+            mPrice = price;
         }
     }
     class TradeCenter
@@ -87,7 +95,7 @@ namespace ConsoleProxy
                     bool getItem = _tradeQueue.TryDequeue(out tradeItem);//取出一个资源
                     if (getItem != false)
                     {
-                        tradeOperator(tradeItem.mOperator, tradeItem.mInstrument);
+                        tradeOperator(tradeItem);
                     }
                     Monitor.Pulse(_tradeQueue);//通知在Wait中阻塞的Producer线程即将执行
                     
@@ -100,16 +108,17 @@ namespace ConsoleProxy
             _release = true;
         }
 
-        private void tradeOperator(int op, string inst)
+        private void tradeOperator(TradeItem tradeItem)
         {
+            
             //Console.WriteLine("操作start:{0}: {1}", op, inst);
-            Log.log(string.Format(Program.LogTitle + "操作start:{0}: {1}", op, inst));
+            Log.log(string.Format(Program.LogTitle + "操作start:{0}: {1}", tradeItem.mOperator, tradeItem.mInstrument));
             string operation = string.Empty;
 
 
             DirectionType dire = DirectionType.Buy;
             OffsetType offset = OffsetType.Open;
-            switch (op)
+            switch (tradeItem.mOperator)
             {
                 case BUY_OPEN:
                     dire = DirectionType.Buy;
@@ -144,27 +153,29 @@ namespace ConsoleProxy
                     
             }
             
-            Console.WriteLine(Program.LogTitle + "操作:{0}: {1}", operation, inst);
-            Log.log(string.Format(Program.LogTitle + "操作:{0}: {1}", operation, inst));
+            Console.WriteLine(Program.LogTitle + "操作:{0}: {1}", operation, tradeItem.mInstrument);
+            Log.log(string.Format(Program.LogTitle + "操作:{0}: {1}", operation, tradeItem.mInstrument));
             OrderType ot = OrderType.Limit;
                
             MarketData tick;
+            double price = tradeItem.mPrice;
 
-            if (_quote.DicTick.TryGetValue(inst, out tick))
+            if(price<=0)
             {
-                double price = dire == DirectionType.Buy ? tick.AskPrice : tick.BidPrice;
-                _orderId = -1;
-                Console.WriteLine(_trade.ReqOrderInsert(inst, dire, offset, price, 1, pType: ot));
-                //for (int i = 0; i < 3; ++i)
-                //{
-                //    Thread.Sleep(200);
-                //    if (-1 != _orderId)
-                //    {
-                //        Console.WriteLine(Program.LogTitle + "委托标识:" + _orderId);
-                //        break;
-                //    }
-                //}
+                if (_quote.DicTick.TryGetValue(tradeItem.mInstrument, out tick))
+                    price = dire == DirectionType.Buy ? tick.AskPrice : tick.BidPrice;
             }
+
+            if(price>=0)
+                Console.WriteLine(_trade.ReqOrderInsert(tradeItem.mInstrument, dire, offset, price, 1, pType: ot));
+
+            //if (_quote.DicTick.TryGetValue(tradeItem.mInstrument, out tick))
+            //{
+            //    double price = dire == DirectionType.Buy ? tick.AskPrice : tick.BidPrice;
+            //    _orderId = -1;
+            //    Console.WriteLine(_trade.ReqOrderInsert(tradeItem.mInstrument, dire, offset, price, 1, pType: ot));
+                
+            //}
             
         }
     }

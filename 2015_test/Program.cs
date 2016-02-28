@@ -30,185 +30,7 @@ namespace ConsoleProxy
         }
     }
 
-    class FileUtils
-    {
-        public const string FILE_PATH_HEAD = "C:\\work\\";
-        public const string FILE_PATH_HEAD_TEST = "C:\\work\\Test";
-
-        public const string ConfigName = "Config.txt";
-
-        public static string getConfigFilePath()
-        {
-            if (Program.isTest == true)
-                return FILE_PATH_HEAD_TEST + ConfigName;
-            else
-                return FILE_PATH_HEAD + ConfigName;
-        }
-    }
-
-    class Config
-    {
-
-        public string user;
-        public string password;
-
-        public static Config loadConfig()
-        {
-            Config config = null;
-            try
-            {
-                string text = File.ReadAllText(FileUtils.getConfigFilePath());
-                config = JsonConvert.DeserializeObject<Config>(text);
-            }
-            catch (Exception e)
-            {
-
-            }
-            return config;
-        }
-    }
-
-    public class Log
-    {
-        public static void log(string LogStr)
-        {
-            StreamWriter sw = null;
-            try
-            {
-                LogStr = Program.LogTitle + "[" +DateTime.Now.ToLocalTime().ToString() + "]" + LogStr+"\n";
-                if(Program.isTest == true)
-                {
-                    sw = new StreamWriter("C:\\work\\TestLog.txt", true);
-                }
-                else
-                { 
-                 sw = new StreamWriter("C:\\work\\Log.txt", true);
-                }
-                sw.WriteLine(LogStr);
-            }
-            catch
-            {
-            }
-            finally
-            {
-                if (sw != null)
-                {
-                    sw.Close();
-                }
-            }
-        }
-
-        public static void logTrade(string LogStr)
-        {
-            StreamWriter sw = null;
-            try
-            {
-                LogStr = /*Program.LogTitle + "[" + DateTime.Now.ToLocalTime().ToString() + "]" +*/ LogStr + "\n";
-                if (Program.isTest == true)
-                {
-                    sw = new StreamWriter("C:\\work\\TestLogTrade.txt", true);
-                }
-                else
-                {
-                    sw = new StreamWriter("C:\\work\\LogTrade.txt", true);
-                }
-                sw.WriteLine(LogStr);
-            }
-            catch
-            {
-            }
-            finally
-            {
-                if (sw != null)
-                {
-                    sw.Close();
-                }
-            }
-        }
-    }
-
-    public class Utils
-    {
-        public static bool isTradingTime(ExchangeStatusType type, DateTime dt)
-        {
-            if (/*type == ExchangeStatusType.Trading &&*/ dt.Hour!=8 && dt.Hour!=20)
-                    return true;
-            return false;
-        }
-
-
-    }
-    class InstrumentWatcher
-    {
-        static Trade sTrade;
-        static System.Threading.Timer timer;
-        static Dictionary<string, DateTime> lastUpdateTime = new Dictionary<string, DateTime>();
-        public static bool flag = true;
-        static object mylock = new object();
-
-        static string getInstumentName(string key)
-        {
-            char[] charArray = key.ToCharArray();
-            for(int i=0;i<key.Length;i++)
-            {
-                char ch = charArray[i];
-                if (ch >= '0' && ch <= '9')
-                    return key.Substring(0, i);
-            }
-            return key;
-        }
-
-        static void Excute(object obj)
-        {
-            Thread.CurrentThread.IsBackground = true;
-
-            lock (mylock)
-            {
-                if (!flag)
-                {
-                    return;
-                }
-
-                
-                foreach(string key in lastUpdateTime.Keys)
-                {
-                    DateTime last = lastUpdateTime[key];
-                    TimeSpan ts = DateTime.Now - last;
-                    string sub = getInstumentName(key);
-                    
-                    if(sTrade.DicExcStatus.ContainsKey(sub) == true && sTrade.DicExcStatus[sub] == ExchangeStatusType.Trading)
-                    { 
-                        if (ts.TotalSeconds>180)
-                        {
-                            Console.WriteLine("InstrumentWatcher Excute:{0} 最近一次获得数据时间为{1}，距离现在{2}秒", key, last.ToString(),ts.TotalSeconds);
-                            Log.log(string.Format("InstrumentWatcher Excute:{0} 最近一次获得数据时间为{1}，距离现在{2}秒", key, last.ToString(), ts.TotalSeconds));
-                        }
-                        else
-                        {
-                            Console.WriteLine("InstrumentWatcher Excute:{0} 最近一次获得数据时间为{1}，距离现在{2}秒", key, last.ToString(), ts.TotalSeconds);
-                        }
-                    }
-
-                }
-
-            }
-
-        }
-
-        public static void updateTime(string instrument, DateTime dt)
-        {
-            lock (mylock)
-            {
-                lastUpdateTime[instrument] = dt;
-            }
-        }
-
-        public static void Init(Trade trade)
-        {
-            sTrade = trade;
-            timer = new System.Threading.Timer(Excute, null, 0, 60000);
-        }
-    }
+    
 
 
     class Program
@@ -226,15 +48,19 @@ namespace ConsoleProxy
         private static int BUY_CLOSETODAY = 4;
         private static int BUY_CLOSE = 41;
 
+        Trade trader;
+        Quote quoter;
         private static ConcurrentQueue<TradeItem> _tradeQueue = new ConcurrentQueue<TradeItem>();
         public static bool isTest = true;
         public static string LogTitle = isTest?"[测试]":"[正式]";
-        
 
+        private List<string> _instrumentList = new List<string>();
+        private Dictionary<int, OrderField> _tradeOrders = new Dictionary<int, OrderField>();
+        private HashSet<int> _removingOrders = new HashSet<int>();
         private static void operatord(Trade t, Quote q, int op, string inst)
         {
             //Console.WriteLine("操作start:{0}: {1}", op, inst);
-            Log.log(string.Format(Program.LogTitle+"操作start:{0}: {1}", op, inst));
+            Log.log(string.Format(Program.LogTitle+"操作开始:{0}: {1}", op, inst));
             string operation = string.Empty;
  
 
@@ -351,9 +177,9 @@ namespace ConsoleProxy
             }
         }
 
-        private static void operatorInstrument(int op, string inst)
+        private static void operatorInstrument(int op, string inst,double price)
         {
-            TradeItem tradeItem = new TradeItem(inst, op);
+            TradeItem tradeItem = new TradeItem(inst, op, price);
 
             lock (_tradeQueue)
             {
@@ -363,11 +189,64 @@ namespace ConsoleProxy
             }
         }
 
+        void subscribeInstruments()
+        {
+            foreach (string inst in _instrumentList)
+            {
+                quoter.ReqSubscribeMarketData(inst);
+            }
+        }
+
+        public void checkStatus()
+        {
+            Console.WriteLine(Program.LogTitle + "checkStatus");
+            if (Utils.isLogoutTimeNow() && trader.IsLogin)
+            {
+                Console.WriteLine(Program.LogTitle + "isLogoutTimeNow");
+                quoter.ReqUserLogout();
+                trader.ReqUserLogout();
+
+                if(Utils.isOverDayNow())
+                {
+                    Console.WriteLine(Program.LogTitle + "isOverDayNow");
+                    this._removingOrders.Clear();
+                    this._tradeOrders.Clear();
+                }
+
+                Thread.Sleep(3000);
+                Console.WriteLine(Program.LogTitle + "trade logout");
+                Log.log(Program.LogTitle + "trade logout");
+            }
+            else if(Utils.isLogInTimeNow() && !trader.IsLogin)
+            {
+                Console.WriteLine(Program.LogTitle + "isLogInTimeNow");
+                int errorCount = 0;
+                while (!trader.IsLogin && errorCount < 100)
+                {
+                    trader.ReqConnect();
+                    Thread.Sleep(3000);
+                    errorCount++;
+                }
+
+                if(!trader.IsLogin)
+                {
+                    Console.WriteLine(Program.LogTitle + "trade login failed");
+                    Log.log(Program.LogTitle + "trade login failed");
+                }
+                else
+                {
+                    subscribeInstruments();
+                    Console.WriteLine(Program.LogTitle + "trade login");
+                    Log.log(Program.LogTitle + "trade login");
+                }
+
+            }
+            
+        }
         //输入：q1ctp /t1ctp /q2xspeed /t2speed
         private static void Main(string[] args)
         {
-            Trade trader;
-            Quote quoter;
+            Program program = new Program();
             //string inst = string.Empty;
             System.Object lockThis = new System.Object();
             Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
@@ -387,30 +266,33 @@ namespace ConsoleProxy
                 case '1': //CTP
                     if (isTest)
                     {
-                        trader = new Trade("ctp_trade_proxy.dll")
+                        program.trader = new Trade("ctp_trade_proxy.dll")
                         {
                             Server = "tcp://180.168.146.187:10000", 
                             Broker = "9999"// "4040",
                         };
-                        quoter = new Quote("ctp_quote_proxy.dll")
+                        program.quoter = new Quote("ctp_quote_proxy.dll")
                         {
-
                             Server = "tcp://180.168.146.187:10010",
                             Broker = "9999",
                         };
 
                     }
-                    else { 
-                        trader = new Trade("ctp_trade_proxy.dll")
+                    else {
+                        program.trader = new Trade("ctp_trade_proxy.dll")
                         {
-                            Server = "tcp://222.73.111.150:41205",//" tcp://101.95.8.178:51205", 
-                            Broker = "9080"// "9999"// "4040",
+                            Server = "tcp://180.166.37.129:41205", //国信
+                            Broker = "8030"
+
+                            //Server = "tcp://222.73.111.150:41205",//" tcp://101.95.8.178:51205",//中建 
+                            //Broker = "9080"// "9999"// "4040",
                         };
-                        quoter = new Quote("ctp_quote_proxy.dll")
+                        program.quoter = new Quote("ctp_quote_proxy.dll")
                         {
-                        
-                            Server = "tcp://222.73.111.150:41213",//"tcp://101.95.8.178:51213",
-                            Broker = "9080",
+                            Server = "tcp://180.166.37.129:41213",//国信
+                            Broker = "8030",
+                            //Server = "tcp://222.73.111.150:41213",//"tcp://101.95.8.178:51213",//中建 
+                            //Broker = "9080",
                         };
                     }
                     //t = new Trade("ctp_trade_proxy.dll")
@@ -425,60 +307,60 @@ namespace ConsoleProxy
                     //};
                     break;
                 case '2': //xSpeed
-                    trader = new Trade("xSpeed_trade_proxy.dll")
+                    program.trader = new Trade("xSpeed_trade_proxy.dll")
                     {
                         Server = "tcp://203.187.171.250:10910",
                         Broker = "0001",
                     };
-                    quoter = new Quote("xSpeed_quote_proxy.dll")
+                    program.quoter = new Quote("xSpeed_quote_proxy.dll")
                     {
                         Server = "tcp://203.187.171.250:10915",
                         Broker = "0001",
                     };
                     break;
                 case '3': //femas
-                    trader = new Trade("femas_trade_proxy.dll")
+                    program.trader = new Trade("femas_trade_proxy.dll")
                     {
                         Server = "tcp://116.228.53.149:6666",
                         Broker = "0001",
                     };
-                    quoter = new Quote("femas_quote_proxy.dll")
+                    program.quoter = new Quote("femas_quote_proxy.dll")
                     {
                         Server = "tcp://116.228.53.149:6888",
                         Broker = "0001",
                     };
                     break;
                 case '4': //CTP
-                    trader = new Trade("ctp_trade_proxy.dll")
+                    program.trader = new Trade("ctp_trade_proxy.dll")
                     {
                         Server = "tcp://124.207.185.88:41205",
                         Broker = "1010",
                     };
-                    quoter = new Quote("ctp_quote_proxy.dll")
+                    program.quoter = new Quote("ctp_quote_proxy.dll")
                     {
                         Server = "tcp://124.207.185.88:41213",
                         Broker = "1010",
                     };
                     break;
                 case '5': //CTP
-                    trader = new Trade("femas_trade_proxy.dll")
+                    program.trader = new Trade("femas_trade_proxy.dll")
                     {
                         Server = "tcp://117.184.207.111:7036",
                         Broker = "2713",
                     };
-                    quoter = new Quote("femas_quote_proxy.dll")
+                    program.quoter = new Quote("femas_quote_proxy.dll")
                     {
                         Server = "tcp://117.184.207.111:7230",
                         Broker = "2713",
                     };
                     break;
                 case '6': //CTP
-                    trader = new Trade("ctp_trade_proxy.dll")
+                    program.trader = new Trade("ctp_trade_proxy.dll")
                     {
                         Server = "tcp://106.39.36.72:51205",
                         Broker = "1010",
                     };
-                    quoter = new Quote("ctp_quote_proxy.dll")
+                    program.quoter = new Quote("ctp_quote_proxy.dll")
                     {
                         Server = "tcp://106.39.36.72:51213",
                         Broker = "1010",
@@ -493,38 +375,39 @@ namespace ConsoleProxy
             if(config == null)
             {
                 Console.WriteLine("请输入帐号:");
-                trader.Investor = Console.ReadLine();
+                program.trader.Investor = Console.ReadLine();
                 Console.WriteLine("请输入密码:");
-                trader.Password = Console.ReadLine();
+                program.trader.Password = Console.ReadLine();
             }
             else
             {
-                trader.Investor = quoter.Investor = config.user;
-                trader.Password = quoter.Password = config.password;
+                program.trader.Investor = program.quoter.Investor = config.user;
+                program.trader.Password = program.quoter.Password = config.password;
             }
 
-            quoter.OnFrontConnected += (sender, e) =>
+            program.quoter.OnFrontConnected += (sender, e) =>
             {
-                Console.WriteLine("OnFrontConnected");
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" +"OnFrontConnected");
                 Log.log("OnFrontConnected");
-                quoter.ReqUserLogin();
+                if(Utils.isTradingTimeNow() || Utils.isLogInTimeNow())
+                    program.quoter.ReqUserLogin();
             };
-            quoter.OnRspUserLogin += (sender, e) => 
+            program.quoter.OnRspUserLogin += (sender, e) => 
             {
-                Console.WriteLine("OnRspUserLogin:{0}", e.Value);
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRspUserLogin:{0}", e.Value);
                 Log.log(string.Format("OnRspUserLogin:{0}", e.Value));
             };
-            quoter.OnRspUserLogout += (sender, e) =>
+            program.quoter.OnRspUserLogout += (sender, e) =>
             {
-                Console.WriteLine("OnRspUserLogout:{0}", e.Value);
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRspUserLogout:{0}", e.Value);
                  Log.log(string.Format("OnRspUserLogout:{0}", e.Value));
             };
-            quoter.OnRtnError += (sender, e) =>
+            program.quoter.OnRtnError += (sender, e) =>
             {
-                Console.WriteLine("OnRtnError:{0}=>{1}", e.ErrorID, e.ErrorMsg);
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnError:{0}=>{1}", e.ErrorID, e.ErrorMsg);
                 Log.log(string.Format("OnRtnError:{0}=>{1}", e.ErrorID, e.ErrorMsg));
             };
-            quoter.OnRtnTick += (sender, e) =>
+            program.quoter.OnRtnTick += (sender, e) =>
             {
                 lock (lockThis)
                 {
@@ -533,6 +416,10 @@ namespace ConsoleProxy
                     //Console.WriteLine("OnRtnTick:{0}", e.Tick.LastPrice);
                     //Console.WriteLine("OnRtnTick:{0}=>{1}=>{2}", e.Tick.UpdateTime, e.Tick.AskPrice, e.Tick.InstrumentID);
                     DateTime d1 = DateTime.Parse(e.Tick.UpdateTime);
+
+                    if (Utils.isTradingTime(e.Tick.InstrumentID,d1) == false)
+                        return;
+
                     InstrumentWatcher.updateTime(e.Tick.InstrumentID, d1);
                     InstrumentData instrumentdata;
 
@@ -611,6 +498,38 @@ namespace ConsoleProxy
                         }
                     }
 
+                    OrderField openOrder = null;
+                    foreach (OrderField order in program._tradeOrders.Values)
+                    {
+                        if(order.InstrumentID == e.Tick.InstrumentID && order.Offset == OffsetType.Open)
+                        {
+                            openOrder = order;
+                            break;
+                        }
+                    }
+                    if(openOrder !=null && program._removingOrders.Contains(openOrder.OrderID) == false)
+                    { 
+                        if (instrumentdata.holder == 1 && openOrder.Direction == DirectionType.Buy
+                            && instrumentdata.lowest > openOrder.LimitPrice)
+                        {
+                            Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" 
+                                + "Cancel buy:{0}, price:{1}, lowest {2}", openOrder.OrderID
+                                , openOrder.LimitPrice, instrumentdata.lowest);
+                            program._removingOrders.Add(openOrder.OrderID);
+                            program.trader.ReqOrderAction(openOrder.OrderID);
+                        }
+                        else if (instrumentdata.holder == -1 && openOrder.Direction == DirectionType.Sell
+                            && instrumentdata.highest < openOrder.LimitPrice)
+                        {
+                            Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]"
+                                + "Cancel sell:{0}, price:{1}, highest {2}", openOrder.OrderID
+                                , openOrder.LimitPrice, instrumentdata.highest);
+                            program._removingOrders.Add(openOrder.OrderID);
+                            program.trader.ReqOrderAction(openOrder.OrderID);
+                        }
+                    }
+
+
                     instrumentdata.lastMin = d1.Minute;
 
                     if (isTriggerHigh)
@@ -625,7 +544,7 @@ namespace ConsoleProxy
                             {
                                 //open buy
                                 //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
-                                operatorInstrument(BUY_OPEN, e.Tick.InstrumentID);
+                                operatorInstrument(BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice- 2* program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick);
                                 instrumentdata.holder = 1;
                                 instrumentdata.isToday = true;
 
@@ -637,17 +556,17 @@ namespace ConsoleProxy
                                 if (instrumentdata.isToday)
                                 {
                                     //operatord(trader, quoter, BUY_CLOSETODAY, e.Tick.InstrumentID);
-                                    operatorInstrument(BUY_CLOSETODAY, e.Tick.InstrumentID);
+                                    operatorInstrument(BUY_CLOSETODAY, e.Tick.InstrumentID,0);
 
                                 }
                                 else
                                 {
                                     //operatord(trader, quoter, BUY_CLOSE, e.Tick.InstrumentID);
-                                    operatorInstrument(BUY_CLOSE, e.Tick.InstrumentID);
+                                    operatorInstrument(BUY_CLOSE, e.Tick.InstrumentID,0);
 
                                 }
                                 //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
-                                operatorInstrument(BUY_OPEN, e.Tick.InstrumentID);
+                                operatorInstrument(BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice - 2* program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick);
                                 instrumentdata.holder = 1;
                                 instrumentdata.isToday = true;
                             }
@@ -669,7 +588,7 @@ namespace ConsoleProxy
                             {
                                 //open sell
                                 //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
-                                operatorInstrument(SELL_OPEN, e.Tick.InstrumentID);
+                                operatorInstrument(SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice + 2 * program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick);
                                 instrumentdata.holder = -1;
                                 instrumentdata.isToday = true;
                             }
@@ -679,16 +598,16 @@ namespace ConsoleProxy
                                 if (instrumentdata.isToday)
                                 {
                                     //operatord(trader, quoter, SELL_CLOSETODAY, e.Tick.InstrumentID);
-                                    operatorInstrument(SELL_CLOSETODAY, e.Tick.InstrumentID);
+                                    operatorInstrument(SELL_CLOSETODAY, e.Tick.InstrumentID,0);
 
                                 }
                                 else
                                 {
                                     //operatord(trader, quoter, SELL_CLOSE, e.Tick.InstrumentID);
-                                    operatorInstrument(SELL_CLOSE, e.Tick.InstrumentID);
+                                    operatorInstrument(SELL_CLOSE, e.Tick.InstrumentID,0);
                                 }
                                 //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
-                                operatorInstrument(SELL_OPEN, e.Tick.InstrumentID);
+                                operatorInstrument(SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice + 2 * program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick);
                                 instrumentdata.holder = -1;
                                 instrumentdata.isToday = true;
                             }
@@ -724,49 +643,65 @@ namespace ConsoleProxy
                 }
             };
 
-            trader.OnFrontConnected += (sender, e) => trader.ReqUserLogin();
-            trader.OnRspUserLogin += (sender, e) =>
+            program.trader.OnFrontConnected += (sender, e) =>
             {
-                Console.WriteLine("OnRspUserLogin:{0}", e.Value);
+                if(Utils.isTradingTimeNow() || Utils.isLogInTimeNow())
+                    program.trader.ReqUserLogin();
+            };
+            program.trader.OnRspUserLogin += (sender, e) =>
+            {
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRspUserLogin:{0}", e.Value);
                 Log.log(string.Format("OnRspUserLogin:{0}", e.Value));
                 if (e.Value == 0)
-                    quoter.ReqConnect();
+                    program.quoter.ReqConnect();
             };
-            trader.OnRspUserLogout += (sender, e) =>
+            program.trader.OnRspUserLogout += (sender, e) =>
             {
-                Console.WriteLine("OnRspUserLogout:{0}", e.Value);
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRspUserLogout:{0}", e.Value);
                 Log.log(string.Format("OnRspUserLogout:{0}", e.Value));
             };
-            trader.OnRtnCancel += (sender, e) =>
+            program.trader.OnRtnCancel += (sender, e) =>
             {
-                Console.WriteLine("OnRtnCancel:{0}", e.Value.OrderID);
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnCancel:{0}", e.Value.OrderID);
                 Log.log(string.Format("OnRtnCancel:{0}", e.Value));
-
+                OrderField orderField = null;
+                if (program._tradeOrders.TryGetValue(e.Value.OrderID, out orderField))
+                {
+                    program._tradeOrders.Remove(e.Value.OrderID);
+                }
+                program._removingOrders.Remove(e.Value.OrderID);
             };
-            trader.OnRtnError += (sender, e) =>
+            program.trader.OnRtnError += (sender, e) =>
             {
-                Console.WriteLine("OnRtnError:{0}=>{1}", e.ErrorID, e.ErrorMsg);
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnError:{0}=>{1}", e.ErrorID, e.ErrorMsg);
                 Log.log(string.Format("OnRtnError:{0}=>{1}", e.ErrorID, e.ErrorMsg));
             };
-            trader.OnRtnExchangeStatus += (sender, e) =>
+            program.trader.OnRtnExchangeStatus += (sender, e) =>
             {
-                Console.WriteLine("OnRtnExchangeStatus:{0}=>{1}", e.Exchange, e.Status);
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnExchangeStatus:{0}=>{1}", e.Exchange, e.Status);
                 Log.log(string.Format("OnRtnExchangeStatus:{0}=>{1}", e.Exchange, e.Status));
             };
-            trader.OnRtnNotice += (sender, e) =>
+            program.trader.OnRtnNotice += (sender, e) =>
             {
-                Console.WriteLine("OnRtnNotice:{0}", e.Value);
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnNotice:{0}", e.Value);
                 Log.log(string.Format("OnRtnNotice:{0}", e.Value));
             };
-            trader.OnRtnOrder += (sender, e) =>
+            program.trader.OnRtnOrder += (sender, e) =>
             {
-                Console.WriteLine("OnRtnOrder:{0}", e.Value.OrderID);
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnOrder:{0}", e.Value.OrderID);
                 Log.log(string.Format("OnRtnOrder:{0}", e.Value.OrderID));
                 _orderId = e.Value.OrderID;
+                if (program._tradeOrders.ContainsKey(_orderId))
+                {
+                    Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnOrder:{0} _tradeOrders exists");
+                    program._tradeOrders[_orderId] = e.Value;
+                }
+                else
+                    program._tradeOrders.Add(_orderId, e.Value);
             };
-            trader.OnRtnTrade += (sender, e) =>
+            program.trader.OnRtnTrade += (sender, e) =>
             {
-                Console.WriteLine("OnRtnTrade:{0}", e.Value.TradeID);
+                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnTrade:{0}", e.Value.TradeID);
                 Log.log(string.Format("OnRtnTrade:{0} OrderID {1}", e.Value.TradeID, e.Value.OrderID));
                 //成交 需要下委托单
                 string direction = e.Value.Direction == DirectionType.Buy ? "买" : "卖";
@@ -777,23 +712,28 @@ namespace ConsoleProxy
                     offsetType = "平今";
                 Log.logTrade(string.Format("{0},{1},{2},{3},{4},{5}", e.Value.InstrumentID, e.Value.TradingDay, e.Value.TradeTime,
                     e.Value.Price, e.Value.Volume, direction+offsetType));
+                OrderField orderField = null;
+                if(program._tradeOrders.TryGetValue(e.Value.OrderID,out orderField))
+                {
+                    program._tradeOrders.Remove(e.Value.OrderID);
+                }
             };
 
-            trader.ReqConnect();
+            program.trader.ReqConnect();
             Thread.Sleep(3000);
-
-            if (!trader.IsLogin)
+            
+            if (!program.trader.IsLogin)
                 goto R;
 
-            TradeCenter tradeCenter = new TradeCenter(trader, quoter, _tradeQueue);
+            TradeCenter tradeCenter = new TradeCenter(program.trader, program.quoter, _tradeQueue);
             tradeCenter.start();
 
-            InstrumentWatcher.Init(trader);
-
-            Console.WriteLine(trader.DicInstrumentField.Aggregate("\r\n合约", (cur, n) => cur + "\t" + n.Value.InstrumentID));
+            InstrumentWatcher.Init(program.trader);
+            LoginWatcher.Init(program);
+            Console.WriteLine(program.trader.DicInstrumentField.Aggregate("\r\n合约", (cur, n) => cur + "\t" + n.Value.InstrumentID));
 
             //使用二进制序列化对象
-            string fileName = @"C:\work\trade.dat";//文件名称与路径
+            string fileName = @"C:\work\Trade.dat";//文件名称与路径
             if(isTest)
                 fileName = @"C:\work\TestTrade.dat";//文件名称与路径
             Dictionary<string, InstrumentData> tempData = null;
@@ -832,7 +772,7 @@ namespace ConsoleProxy
                 tradeData = tempData;
 
 
-            foreach(PositionField data in trader.DicPositionField.Values)
+            foreach(PositionField data in program.trader.DicPositionField.Values)
             {
                 InstrumentData instrumentData;
                 bool found = tradeData.TryGetValue(data.InstrumentID, out instrumentData);
@@ -863,7 +803,7 @@ namespace ConsoleProxy
             }
 
             //使用二进制序列化对象
-            fileName = @"C:\work\instrument.dat";//文件名称与路径
+            fileName = @"C:\work\Instrument.dat";//文件名称与路径
             if (isTest)
                 fileName = @"C:\work\TestInstrument.dat";//文件名称与路径
             List<string> instrumentList = null;
@@ -877,19 +817,25 @@ namespace ConsoleProxy
 
             }
 
-            if(instrumentList == null || instrumentList.Count == 0)
+            if (instrumentList == null || instrumentList.Count == 0)
             {
                 string inst = string.Empty;
                 Console.WriteLine(Program.LogTitle + "请输入合约:");
                 inst = Console.ReadLine();
-                quoter.ReqSubscribeMarketData(inst);
+                //program.quoter.ReqSubscribeMarketData(inst);
+                program._instrumentList.Clear();
+                program._instrumentList.Add(inst);
             }
             else
             {
-                foreach(string inst in instrumentList)
-                    quoter.ReqSubscribeMarketData(inst);
+                program._instrumentList.Clear();
+                program._instrumentList.AddRange(instrumentList);
+                //foreach (string inst in instrumentList)
+                //{
+                //    program.quoter.ReqSubscribeMarketData(inst);
+                //}
             }
-
+            program.subscribeInstruments();
         //quoter.ReqSubscribeMarketData("m1605");
         //quoter.ReqSubscribeMarketData("SR605");
         Inst:
@@ -918,43 +864,43 @@ namespace ConsoleProxy
                     offset = OffsetType.CloseToday;
                     break;
                 case '5':
-                    trader.ReqOrderAction(_orderId);
+                    program.trader.ReqOrderAction(_orderId);
                     break;
                 case 'a':
-                    Console.WriteLine(trader.DicExcStatus.Aggregate("\r\n交易所状态", (cur, n) => cur + "\r\n" + n.Key + "=>" + n.Value));
+                    Console.WriteLine(program.trader.DicExcStatus.Aggregate("\r\n交易所状态", (cur, n) => cur + "\r\n" + n.Key + "=>" + n.Value));
                     break;
                 case 'b':
                     Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.WriteLine(trader.DicOrderField.Aggregate("\r\n委托", (cur, n) => cur + "\r\n"
+                    Console.WriteLine(program.trader.DicOrderField.Aggregate("\r\n委托", (cur, n) => cur + "\r\n"
                         + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v)
                         => f + string.Format("{0,12}", v.GetValue(n.Value)))));
                     break;
                 case 'c':
                     Console.ForegroundColor = ConsoleColor.DarkCyan;
-                    Console.WriteLine(trader.DicTradeField.Aggregate("\r\n成交", (cur, n) => cur + "\r\n"
+                    Console.WriteLine(program.trader.DicTradeField.Aggregate("\r\n成交", (cur, n) => cur + "\r\n"
                         + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v) => f + string.Format("{0,12}", v.GetValue(n.Value)))));
                     break;
                 case 'd': //持仓
                     Console.ForegroundColor = ConsoleColor.DarkGreen;
-                    Console.WriteLine(trader.DicPositionField.Aggregate("\r\n持仓", (cur, n) => cur + "\r\n"
+                    Console.WriteLine(program.trader.DicPositionField.Aggregate("\r\n持仓", (cur, n) => cur + "\r\n"
                         + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v) => f + string.Format("{0,12}", v.GetValue(n.Value)))));
                     break;
                 case 'e':
-                    Console.WriteLine(trader.DicInstrumentField.Aggregate("\r\n合约", (cur, n) => cur + "\r\n"
+                    Console.WriteLine(program.trader.DicInstrumentField.Aggregate("\r\n合约", (cur, n) => cur + "\r\n"
                         + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v) => f + string.Format("{0,12}", v.GetValue(n.Value)))));
                     break;
                 case 'f':
-                    Console.WriteLine(trader.TradingAccount.GetType().GetFields().Aggregate("\r\n权益\t", (cur, n) => cur + ","
-                        + n.GetValue(trader.TradingAccount).ToString()));
+                    Console.WriteLine(program.trader.TradingAccount.GetType().GetFields().Aggregate("\r\n权益\t", (cur, n) => cur + ","
+                        + n.GetValue(program.trader.TradingAccount).ToString()));
                     break;
                 case 'g':
                     Console.WriteLine(Program.LogTitle + "请输入合约:");
                     string inst = Console.ReadLine();
-                    quoter.ReqSubscribeMarketData(inst);
+                    program.quoter.ReqSubscribeMarketData(inst);
                     break;
                 case 'q':
-                    quoter.ReqUserLogout();
-                    trader.ReqUserLogout();
+                    program.quoter.ReqUserLogout();
+                    program.trader.ReqUserLogout();
                     tradeCenter.stop();
                     InstrumentWatcher.flag = false;
                     Thread.Sleep(2000); //待接口处理后续操作
