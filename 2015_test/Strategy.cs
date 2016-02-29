@@ -1,8 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Trade2015;
 
 namespace ConsoleProxy
 {
@@ -46,6 +49,7 @@ namespace ConsoleProxy
     public class StrategyManager
     {
         private static StrategyManager sInstance = new StrategyManager();
+        private Dictionary<int, OrderField> mTradeOrders = new Dictionary<int, OrderField>();
 
         public StrategyManager getInstance()
         {
@@ -117,6 +121,64 @@ namespace ConsoleProxy
             {
                 strategy.onOrder();
             }
+        }
+    }
+
+
+    public abstract class AbstractStrategy : IStrategy
+    {
+        protected List<string> mTradeInstrumentList = new List<string>();
+        string IStrategy.getStrategyName()
+        {
+            return "AbstractStrategy";
+        }
+
+        void IStrategy.onEnd()
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStrategy.onInit()
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStrategy.onOrder()
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStrategy.onStart()
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStrategy.onTick()
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStrategy.onTrade()
+        {
+            throw new NotImplementedException();
+        }
+
+
+        public void initTradeInstruments()
+        {
+            //使用二进制序列化对象
+            string fileName = FileUtil.getInstrumentFilePath(this);//文件名称与路径
+            try
+            {
+                string text = File.ReadAllText(fileName);
+                mTradeInstrumentList = JsonConvert.DeserializeObject<List<string>>(text);
+            }
+            catch (Exception e)
+            {
+
+            }
+
+            
         }
     }
 }

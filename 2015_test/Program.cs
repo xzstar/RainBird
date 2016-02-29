@@ -36,8 +36,8 @@ namespace ConsoleProxy
     class Program
     {
         static private string _inst;
-        private static int _TOTALSIZE = 32;
-        private static int MINSPAN = 3;
+        private static int _TOTALSIZE = 8;
+        private static int MINSPAN = 30;
         private static double _LastPrice = double.NaN;
 
         private static int _orderId;
@@ -51,7 +51,7 @@ namespace ConsoleProxy
         Trade trader;
         Quote quoter;
         private static ConcurrentQueue<TradeItem> _tradeQueue = new ConcurrentQueue<TradeItem>();
-        public static bool isTest = true;
+        public const bool isTest = true;
         public static string LogTitle = isTest?"[测试]":"[正式]";
 
         private List<string> _instrumentList = new List<string>();
@@ -250,7 +250,7 @@ namespace ConsoleProxy
             //string inst = string.Empty;
             System.Object lockThis = new System.Object();
             Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
-
+            bool isInit = true;
             //LinkedList<double> _highList = new LinkedList<double>();
             //LinkedList<double> _lowList = new LinkedList<double>();
             //double highest = 0;
@@ -616,12 +616,12 @@ namespace ConsoleProxy
 
                     if (isTriggerHigh || isTriggerLow) { 
                         
-                        string fileNameSerialize = @"C:\work\trade.dat";//文件名称与路径
-                        if (isTest)
-                        {
-                            fileNameSerialize = @"C:\work\TestTrade.dat";//文件名称与路径
-                        }
-
+                        //string fileNameSerialize = @"C:\work\trade.dat";//文件名称与路径
+                        //if (isTest)
+                        //{
+                        //    fileNameSerialize = @"C:\work\TestTrade.dat";//文件名称与路径
+                        //}
+                        string fileNameSerialize = FileUtil.getTradeFilePath();
                         string jsonString = JsonConvert.SerializeObject(tradeData);
                         
                         File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
@@ -645,8 +645,11 @@ namespace ConsoleProxy
 
             program.trader.OnFrontConnected += (sender, e) =>
             {
-                if(Utils.isTradingTimeNow() || Utils.isLogInTimeNow())
+                if(Utils.isTradingTimeNow() || Utils.isLogInTimeNow()|| isInit)
                     program.trader.ReqUserLogin();
+
+                if (isInit)
+                    isInit = false;
             };
             program.trader.OnRspUserLogin += (sender, e) =>
             {
@@ -733,9 +736,10 @@ namespace ConsoleProxy
             Console.WriteLine(program.trader.DicInstrumentField.Aggregate("\r\n合约", (cur, n) => cur + "\t" + n.Value.InstrumentID));
 
             //使用二进制序列化对象
-            string fileName = @"C:\work\Trade.dat";//文件名称与路径
-            if(isTest)
-                fileName = @"C:\work\TestTrade.dat";//文件名称与路径
+            //string fileName = @"C:\work\Trade.dat";//文件名称与路径
+            //if(isTest)
+            //    fileName = @"C:\work\TestTrade.dat";//文件名称与路径
+            string fileName = FileUtil.getTradeFilePath();
             Dictionary<string, InstrumentData> tempData = null;
             try
             {
@@ -803,9 +807,10 @@ namespace ConsoleProxy
             }
 
             //使用二进制序列化对象
-            fileName = @"C:\work\Instrument.dat";//文件名称与路径
-            if (isTest)
-                fileName = @"C:\work\TestInstrument.dat";//文件名称与路径
+            //fileName = @"C:\work\Instrument.dat";//文件名称与路径
+            //if (isTest)
+            //    fileName = @"C:\work\TestInstrument.dat";//文件名称与路径
+            fileName = FileUtil.getInstrumentFilePath();
             List<string> instrumentList = null;
             try
             {

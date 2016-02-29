@@ -15,14 +15,16 @@ namespace ConsoleProxy
             try
             {
                 LogStr = Program.LogTitle + "[" + DateTime.Now.ToLocalTime().ToString() + "]" + LogStr + "\n";
-                if (Program.isTest == true)
-                {
-                    sw = new StreamWriter("C:\\work\\TestLog.txt", true);
-                }
-                else
-                {
-                    sw = new StreamWriter("C:\\work\\Log.txt", true);
-                }
+                string logFile = FileUtil.getLogFilePath();
+                sw = new StreamWriter(logFile, true);
+                //if (Program.isTest == true)
+                //{
+                //    sw = new StreamWriter("C:\\work\\TestLog.txt", true);
+                //}
+                //else
+                //{
+                //    sw = new StreamWriter("C:\\work\\Log.txt", true);
+                //}
                 sw.WriteLine(LogStr);
             }
             catch
@@ -43,14 +45,17 @@ namespace ConsoleProxy
             try
             {
                 LogStr = /*Program.LogTitle + "[" + DateTime.Now.ToLocalTime().ToString() + "]" +*/ LogStr + "\n";
-                if (Program.isTest == true)
-                {
-                    sw = new StreamWriter("C:\\work\\TestLogTrade.txt", true);
-                }
-                else
-                {
-                    sw = new StreamWriter("C:\\work\\LogTrade.txt", true);
-                }
+
+                string logFile = FileUtil.getLogTradeFilePath();
+                sw = new StreamWriter(logFile, true);
+                //if (Program.isTest == true)
+                //{
+                //    sw = new StreamWriter("C:\\work\\TestLogTrade.txt", true);
+                //}
+                //else
+                //{
+                //    sw = new StreamWriter("C:\\work\\LogTrade.txt", true);
+                //}
                 sw.WriteLine(LogStr);
             }
             catch
