@@ -16,7 +16,7 @@ namespace ConsoleProxy
         public static bool flag = true;
         static object mylock = new object();
 
-        static string getInstumentName(string key)
+        public static string getInstumentName(string key)
         {
             char[] charArray = key.ToCharArray();
             for (int i = 0; i < key.Length; i++)

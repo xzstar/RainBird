@@ -17,18 +17,28 @@ namespace ConsoleProxy
         public string mInstrument;
         public int mOperator;
         public double mPrice;
+        public int mVolumn;
 
         public TradeItem(String instrument,int operate)
         {
             mInstrument = instrument;
             mOperator = operate;
             mPrice = 0;
+            mVolumn = 1;
         }
         public TradeItem(String instrument, int operate,double price)
         {
             mInstrument = instrument;
             mOperator = operate;
             mPrice = price;
+            mVolumn = 1;
+        }
+        public TradeItem(String instrument, int operate, double price,int volumn)
+        {
+            mInstrument = instrument;
+            mOperator = operate;
+            mPrice = price;
+            mVolumn = volumn;
         }
     }
     class TradeCenter
@@ -167,7 +177,7 @@ namespace ConsoleProxy
             }
 
             if(price>=0)
-                Console.WriteLine(_trade.ReqOrderInsert(tradeItem.mInstrument, dire, offset, price, 1, pType: ot));
+                Console.WriteLine(_trade.ReqOrderInsert(tradeItem.mInstrument, dire, offset, price, tradeItem.mVolumn, pType: ot));
 
             //if (_quote.DicTick.TryGetValue(tradeItem.mInstrument, out tick))
             //{
