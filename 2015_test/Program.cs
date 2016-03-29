@@ -12,7 +12,7 @@ using System.Text;
 namespace ConsoleProxy
 {
     [Serializable]
-    class InstrumentData
+    public class InstrumentData
     {
         public LinkedList<double> _highList;
         public LinkedList<double> _lowList;
@@ -56,7 +56,7 @@ namespace ConsoleProxy
         Trade trader;
         Quote quoter;
         private static ConcurrentQueue<TradeItem> _tradeQueue = new ConcurrentQueue<TradeItem>();
-        public const bool isTest = true;
+        public const bool isTest = false;
         public static string LogTitle = isTest?"[测试]":"[正式]";
 
         private List<InstrumentTradeConfig> _instrumentList = new List<InstrumentTradeConfig>();
@@ -103,48 +103,7 @@ namespace ConsoleProxy
                     dire = DirectionType.Buy;
                     offset = OffsetType.Close;
                     operation = "卖平昨";
-                    break;
-                    //case '5':
-                    //    t.ReqOrderAction(_orderId);
-                    //    break;
-                    //case 'a':
-                    //    Console.WriteLine(t.DicExcStatus.Aggregate("\r\n交易所状态", (cur, n) => cur + "\r\n" + n.Key + "=>" + n.Value));
-                    //    break;
-                    //case 'b':
-                    // 89oiy    Console.ForegroundColor = ConsoleColor.Cyan;
-                    //    Console.WriteLine(t.DicOrderField.Aggregate("\r\n委托", (cur, n) => cur + "\r\n"
-                    //        + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v)
-                    //        => f + string.Format("{0,12}", v.GetValue(n.Value)))));
-                    //    break;
-                    //case 'c':
-                    //    Console.ForegroundColor = ConsoleColor.DarkCyan;
-                    //    Console.WriteLine(t.DicTradeField.Aggregate("\r\n成交", (cur, n) => cur + "\r\n"
-                    //        + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v) => f + string.Format("{0,12}", v.GetValue(n.Value)))));
-                    //    break;
-                    //case 'd': //持仓
-                    //    Console.ForegroundColor = ConsoleColor.DarkGreen;
-                    //    Console.WriteLine(t.DicPositionField.Aggregate("\r\n持仓", (cur, n) => cur + "\r\n"
-                    //        + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v) => f + string.Format("{0,12}", v.GetValue(n.Value)))));
-                    //    break;
-                    //case 'e':
-                    //    Console.WriteLine(t.DicInstrumentField.Aggregate("\r\n合约", (cur, n) => cur + "\r\n"
-                    //        + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v) => f + string.Format("{0,12}", v.GetValue(n.Value)))));
-                    //    break;
-                    //case 'f':
-                    //    Console.WriteLine(t.TradingAccount.GetType().GetFields().Aggregate("\r\n权益\t", (cur, n) => cur + ","
-                    //        + n.GetValue(t.TradingAccount).ToString()));
-                    //    break;
-                    //case 'g':
-                    //    Console.WriteLine("请输入合约:");
-                    //    inst = Console.ReadLine();
-                    //    q.ReqSubscribeMarketData(inst);
-                    //    break;
-                    //case 'q':
-                    //    q.ReqUserLogout();
-                    //    t.ReqUserLogout();
-                    //    Thread.Sleep(2000); //待接口处理后续操作
-                    //    Environment.Exit(0);
-                    //    break;
+                    break;    
             }
             //if (op >= 1 && op <= 4)
             {
@@ -265,7 +224,16 @@ namespace ConsoleProxy
 
             }
         }
-
+        public void checkStatusOneMin()
+        {
+            if(Utils.isSyncPositionTime())
+            {
+                Console.WriteLine(Program.LogTitle + "更新持仓");
+                Console.WriteLine(trader.DicPositionField.Aggregate("\r\n持仓", (cur, n) => cur + "\r\n"
+                       + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v) => f + string.Format("{0,12}", v.GetValue(n.Value)))));
+                trader.ReqQryPosition();
+            }
+        }
         public void checkStatus()
         {
             Console.WriteLine(Program.LogTitle + "checkStatus");
@@ -307,6 +275,7 @@ namespace ConsoleProxy
                     subscribeInstruments();
                     Console.WriteLine(Program.LogTitle + "trade login");
                     Log.log(Program.LogTitle + "trade login");
+                    //trader.ReqQryPosition();
                 }
 
             }
@@ -729,6 +698,8 @@ namespace ConsoleProxy
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnExchangeStatus:{0}=>{1}", e.Exchange, e.Status);
                 Log.log(string.Format("OnRtnExchangeStatus:{0}=>{1}", e.Exchange, e.Status));
+                //if(e.Status ==ExchangeStatusType.BeforeTrading && e.Exchange=="rb")
+                //     program.trader.ReqQryPosition();
             };
             program.trader.OnRtnNotice += (sender, e) =>
             {
@@ -766,6 +737,7 @@ namespace ConsoleProxy
                 {
                     program._tradeOrders.Remove(e.Value.OrderID);
                 }
+                program.trader.ReqQryPosition();
             };
 
             program.trader.ReqConnect();
@@ -935,6 +907,7 @@ namespace ConsoleProxy
                     Console.ForegroundColor = ConsoleColor.DarkGreen;
                     Console.WriteLine(program.trader.DicPositionField.Aggregate("\r\n持仓", (cur, n) => cur + "\r\n"
                         + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v) => f + string.Format("{0,12}", v.GetValue(n.Value)))));
+                    program.trader.ReqQryPosition();
                     break;
                 case 'e':
                     Console.WriteLine(program.trader.DicInstrumentField.Aggregate("\r\n合约", (cur, n) => cur + "\r\n"

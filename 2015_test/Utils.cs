@@ -80,6 +80,21 @@ namespace ConsoleProxy
             return false;
         }
 
+        public static bool isSyncPositionTime()
+        {
+            int hour = DateTime.Now.ToLocalTime().Hour;
+            int min = DateTime.Now.ToLocalTime().Minute;
+
+            if (DateTime.Now.ToLocalTime().DayOfWeek == DayOfWeek.Saturday ||
+               DateTime.Now.ToLocalTime().DayOfWeek == DayOfWeek.Sunday)
+                return false;
+
+            if (hour == 20 && (min == 58 || min == 59))
+                return true;
+            
+            return false;
+        }
+
         public static bool isOverDayNow()
         {
             int hour = DateTime.Now.ToLocalTime().Hour;

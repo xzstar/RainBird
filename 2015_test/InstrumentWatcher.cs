@@ -86,6 +86,7 @@ namespace ConsoleProxy
     {
         static Program _p;
         static System.Threading.Timer timer;
+        static System.Threading.Timer oneMinTimer;
 
         static void Excute(object obj)
         {
@@ -93,10 +94,17 @@ namespace ConsoleProxy
             _p.checkStatus();
         }
 
+        static void ExcuteOneMin(object obj)
+        {
+            Thread.CurrentThread.IsBackground = true;
+            _p.checkStatusOneMin();
+        }
+
         public static void Init(Program program)
         {
             _p = program;
             timer = new System.Threading.Timer(Excute, null, 60 * 1000, 10 * 60 * 1000);
+            oneMinTimer = new System.Threading.Timer(ExcuteOneMin, null, 60 * 1000, 1 * 60 * 1000);
         }
     }
 }
