@@ -16,13 +16,21 @@ namespace ConsoleProxy
         public const string InstrumentName = "Instrument.dat";
         public const string LogName = "Log.txt";
         public const string LogTradeName = "LogTrade.txt";
+        public const string UnitDataName = "15m.json";
+        public const string TickDataName = "TickData.txt";
+
         public const String TestTag = Program.isTest == true?"Test":"";
     
         private static string buildFilePath(string fileName)
         {
             return System.AppDomain.CurrentDomain.BaseDirectory +"conf\\"+ TestTag+fileName;
         }
-            
+
+        private static string buildDataFilePath(string fileName)
+        {
+            return System.AppDomain.CurrentDomain.BaseDirectory + "test\\" + fileName;
+        }
+
         public static string getConfigFilePath()
         {
             return buildFilePath(ConfigName);
@@ -41,21 +49,41 @@ namespace ConsoleProxy
         {
             return buildFilePath(LogName);
         }
+
+        public static string getLogFilePath(String instrument)
+        {
+            return buildFilePath("_" + instrument +"_"+LogName);
+        }
+
+        public static string getUnitDataPath(string instrument)
+        {
+            return buildFilePath(instrument + "_" + UnitDataName);
+        }
+
+        public static string getTickDataPath(string instrument)
+        {
+            return buildFilePath("_" + instrument + "_" + TickDataName);
+        }
+
         public static string getLogTradeFilePath()
         {
             return buildFilePath(LogTradeName);
         }
-        public static string getInstrumentFilePath(IStrategy strategy)
+        public static string getTestDataFilePath(string instrument)
         {
-            string strategyName = strategy.getStrategyName();
-            if(Program.isTest)
-            {
-                return buildFilePath(strategyName + "_"+ TestTag + InstrumentName);
-            }
-            else
-            {
-                return buildFilePath(strategyName + "_" + InstrumentName);
-            }
+            return buildDataFilePath(instrument);
         }
+        //public static string getInstrumentFilePath(IStrategy strategy)
+        //{
+        //    string strategyName = strategy.getStrategyName();
+        //    if(Program.isTest)
+        //    {
+        //        return buildFilePath(strategyName + "_"+ TestTag + InstrumentName);
+        //    }
+        //    else
+        //    {
+        //        return buildFilePath(strategyName + "_" + InstrumentName);
+        //    }
+        //}
     }
 }
