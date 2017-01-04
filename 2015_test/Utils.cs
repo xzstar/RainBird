@@ -15,8 +15,20 @@ namespace ConsoleProxy
                 return true;
             if (dt.Hour == 20 && dt.Minute == 59)
                 return true;
-            
+
             return false;
+        }
+
+        public static bool isValidData(string instrument, DateTime d1, string updateTime)
+        {
+            int hour = DateTime.Now.ToLocalTime().Hour;
+            if ((hour == 8 || hour == 9) && d1.Hour == 23)
+            {
+                Console.WriteLine("onRtnTick:{0},收到昨天交易时间{1} Tick数据{2}，忽略", instrument, d1.ToShortTimeString(), updateTime);
+                return false;
+            }
+
+            return true;
         }
 
         public static bool isTradingTime(string instrument, DateTime d1)
@@ -26,6 +38,10 @@ namespace ConsoleProxy
                 Console.WriteLine("onRtnTick:{0},收到非交易时间{1} Tick数据，忽略", instrument, d1.ToShortTimeString());
                 return false;
             }
+
+
+
+
             return true;
         }
 
@@ -68,13 +84,13 @@ namespace ConsoleProxy
                DateTime.Now.ToLocalTime().DayOfWeek == DayOfWeek.Sunday)
                 return false;
 
-            if (hour == 8 && min >=30 && min <= 59)
+            if (hour == 8 && min >= 30 && min <= 59)
                 return true;
 
-            if (hour == 13 && min >=0 && min <= 29)
+            if (hour == 13 && min >= 0 && min <= 29)
                 return true;
 
-            if (hour == 20 && min >=30 && min <= 59)
+            if (hour == 20 && min >= 30 && min <= 59)
                 return true;
 
             return false;
@@ -91,7 +107,7 @@ namespace ConsoleProxy
 
             if (hour == 20 && (min == 58 || min == 59))
                 return true;
-            
+
             return false;
         }
 

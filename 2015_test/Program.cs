@@ -9,45 +9,34 @@ using System.Collections.Concurrent;
 using Newtonsoft.Json;
 using System.Text;
 using System.Threading.Tasks;
+using MongoDB.Bson;
+using MongoDB.Driver;
+using System.Globalization;
 
 namespace ConsoleProxy
 {
     [Serializable]
     public class UnitData
     {
-        public string datetime;
-        public double high;
-        public double low;
-        public double open;
-        public double close;
-
+        public ObjectId Id { get; set; }
+        public string datetime { get; set; }
+        public double high { get; set; }
+        public double low { get; set; }
+        public double open { get; set; }
+        public double close { get; set; }
+        public double avg_480 { get; set; }
     }
 
-    public class TickData
-    {
-        public string datatime;
-        public double tick;
-    }
-
-    //[Serializable]
-    //public class UnitDataList
-    //{
-    //    LinkedList<UnitData> data;
-    //}
-
+   
     [Serializable]
     public class InstrumentData
     {
-        //public LinkedList<UnitData> unitDataList;
         public string lastUpdateTime = null;
         public int holder = 0;
         public bool isToday = true;
         public double price = -1;
         public double curAvg = 0;
-        public InstrumentData()
-        {
-            //unitDataList = new LinkedList<UnitData>();
-        }
+
     }
 
     public class InstrumentTradeConfig
@@ -65,9 +54,6 @@ namespace ConsoleProxy
         private static int _TOTALSIZE = 480 ;
         private static int _MIN_INTERVAL = 15;
         private static double _LastPrice = double.NaN;
-        //private static int BACK_SPAN = 3;
-        //private static int STOP_LOSS = 9;
-        //private static int STOP_OPERATION = 10; //超过时间放弃
 
         private static int _orderId;
         private static int BUY_OPEN = 1;
@@ -82,17 +68,36 @@ namespace ConsoleProxy
         TradeCenter tradeCenter;
         static Object lockFile = new Object();
         private static ConcurrentQueue<TradeItem> _tradeQueue = new ConcurrentQueue<TradeItem>();
-        public const bool isTest = false;
+        public const bool isTest = true;
         public static string LogTitle = isTest?"[测试]":"[正式]";
 
         private List<InstrumentTradeConfig> _instrumentList = new List<InstrumentTradeConfig>();
         private Dictionary<string, InstrumentTradeConfig> _instrumentMap = new Dictionary<string, InstrumentTradeConfig>();
-        //private Dictionary<int, OrderField> _tradeOrders = new Dictionary<int, OrderField>();
-        //private HashSet<int> _removingOrders = new HashSet<int>();
         private Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
         private Dictionary<string, HashSet<string>> _waitingForOp = new Dictionary<string, HashSet<string>>();
-        private Dictionary<string, LinkedList<UnitData>> unitDataMap = new Dictionary<string, LinkedList<UnitData>>();
-        //private Dictionary<string, LinkedList<TickData>> tickDataMap = new Dictionary<string, LinkedList<TickData>>();
+        private Dictionary<string, List<UnitData>> unitDataMap = new Dictionary<string, List<UnitData>>();
+
+        /// <summary>
+        /// 数据库连接
+        /// </summary>
+        private const string connectionString = "mongodb://127.0.0.1:27017";
+        /// <summary>
+        /// 指定的数据库
+        /// </summary>
+        private const string dbName = "data_15min";
+        /// <summary>
+        /// 指定的表
+        /// </summary>
+        //private const string tbName = "table_text";
+
+        //static String instrument;//= "RM705";
+        //static String instrument_1m = "_1m";
+        static String instrument_15m = "_15m";
+
+        private MongoDatabase mongoDB;
+
+        private bool isInited = false;
+
         private static void operatord(Trade t, Quote q, int op, string inst)
         {
             //Console.WriteLine("操作start:{0}: {1}", op, inst);
@@ -174,14 +179,6 @@ namespace ConsoleProxy
 
         private static void operatorInstrument(int op, string inst,double price)
         {
-            //TradeItem tradeItem = new TradeItem(inst, op, price);
-
-            //lock (_tradeQueue)
-            //{
-            //    //Monitor.Wait(_tradeQueue);//暂时放弃调用线程对该资源的锁，让Consumer执行
-            //    _tradeQueue.Enqueue(tradeItem);//生成一个资源
-            //    Monitor.Pulse(_tradeQueue);//通知在Wait中阻塞的Consumer线程即将执行
-            //}
             operatorInstrument(op, inst, price, 1);
         }
         private static void operatorInstrument(int op, string inst, double price,int volumn)
@@ -190,7 +187,6 @@ namespace ConsoleProxy
 
             lock (_tradeQueue)
             {
-                //Monitor.Wait(_tradeQueue);//暂时放弃调用线程对该资源的锁，让Consumer执行
                 _tradeQueue.Enqueue(tradeItem);//生成一个资源
                 Monitor.Pulse(_tradeQueue);//通知在Wait中阻塞的Consumer线程即将执行
             }
@@ -290,29 +286,29 @@ namespace ConsoleProxy
                 Console.WriteLine(Program.LogTitle + "trade logout");
                 Log.log(Program.LogTitle + "trade logout");
 
-                foreach (string key in unitDataMap.Keys)
-                {
-                    LinkedList<UnitData> unitDataList;
-                    if (unitDataMap.TryGetValue(key, out unitDataList))
-                    {
-                        if (unitDataList == null)
-                            continue;
-                        Log.log(string.Format("Quit:saving {0} ", key));
+                //foreach (string key in unitDataMap.Keys)
+                //{
+                //    LinkedList<UnitData> unitDataList;
+                //    if (unitDataMap.TryGetValue(key, out unitDataList))
+                //    {
+                //        if (unitDataList == null)
+                //            continue;
+                //        Log.log(string.Format("Quit:saving {0} ", key));
 
-                        Task.Factory.StartNew(() =>
-                        {
-                            lock(lockFile)
-                            {
-                                lock(lockFile)
-                                {
-                                    string fileNameSerialize = FileUtil.getUnitDataPath(key);
-                                    string jsonString = JsonConvert.SerializeObject(unitDataList);
-                                    File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
-                                }
-                            }
-                        });
-                    }
-                }
+                //        Task.Factory.StartNew(() =>
+                //        {
+                //            lock(lockFile)
+                //            {
+                //                lock(lockFile)
+                //                {
+                //                    string fileNameSerialize = FileUtil.getUnitDataPath(key);
+                //                    string jsonString = JsonConvert.SerializeObject(unitDataList);
+                //                    File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
+                //                }
+                //            }
+                //        });
+                //    }
+                //}
 
             }
             else if(Utils.isLogInTimeNow() && !trader.IsLogin)
@@ -343,20 +339,28 @@ namespace ConsoleProxy
             
         }
 
-        private bool isStartMin(DateTime dt, string instrument)
+
+        private bool isOpenMin(DateTime dt)
         {
             if ((dt.Hour == 9 && dt.Minute == 0)
                 || (dt.Hour == 10 && dt.Minute == 30)
                 || (dt.Hour == 13 && dt.Minute == 30)
                 || (dt.Hour == 21 && dt.Minute == 0))
                 return true;
-            else if ((dt.Hour == 10 && dt.Minute == 15)
+            else
+                return false;
+        }
+
+        private bool isStartMin(DateTime dt, string instrument)
+        {
+            if ((dt.Hour == 10 && dt.Minute == 15)
                 || (dt.Hour == 11 && dt.Minute == 30)
                 || (dt.Hour == 15 && dt.Minute == 0))
                 return false;
-            else if ((instrument.StartsWith("rb") && dt.Hour == 23 && dt.Minute == 0)
-                || (instrument.StartsWith("ag") && dt.Hour == 2 && dt.Minute == 30)
-                || (instrument.StartsWith("al") && dt.Hour == 1 && dt.Minute == 0))
+            else if ((instrument.StartsWith("rb") && dt.Hour == 23 && dt.Minute >= 0)
+                || (instrument.StartsWith("bu") && dt.Hour == 23 && dt.Minute >= 0)
+                || (instrument.StartsWith("ag") && dt.Hour == 2 && dt.Minute >= 30)
+                || (instrument.StartsWith("al") && dt.Hour == 1 && dt.Minute >= 0))
                 return false;
             else if (dt.Minute % _MIN_INTERVAL == 0)
                 return true;
@@ -367,16 +371,40 @@ namespace ConsoleProxy
         //Todo lastMin 加上日期时间，避免涨跌停无数据，需要判断时差超过15分钟也要新bar
         private bool isNewBar(string lastUpdateTime, DateTime dt, string instrument)
         {
-            if (lastUpdateTime == null)
+            DateTime lastUpdateDT = DateTime.Parse(lastUpdateTime);
+            if (lastUpdateTime == null || ((lastUpdateDT.Hour != dt.Hour || lastUpdateDT.Minute != dt.Minute) && isOpenMin(dt)))
                 return true;
 
-            DateTime lastUpdateDT = DateTime.Parse(lastUpdateTime);
 
             TimeSpan span = dt - lastUpdateDT;
 
-            if((lastUpdateDT.Minute != dt.Minute && isStartMin(dt, instrument)) || span.TotalMinutes > _MIN_INTERVAL)
+            if (((lastUpdateDT.Hour != dt.Hour || lastUpdateDT.Minute != dt.Minute) && isStartMin(dt, instrument)) || span.TotalMinutes > _MIN_INTERVAL)
                 return true;
             return false;
+        }
+
+        private void initUnitDataMap(string instrument)
+        {
+            List<UnitData> unitDataList = MongoDbHepler.GetAll<UnitData>(mongoDB, instrument + instrument_15m);
+            unitDataMap.Add(instrument, unitDataList);
+            int count = unitDataList.Count;
+            if (count > _TOTALSIZE)
+            {
+                UnitData lastUnitData = unitDataList.Last();
+                if (lastUnitData.avg_480 <= 0)
+                {
+                    if (count > _TOTALSIZE)
+                    {
+                        double total = 0;
+                        for (int i = 0; i < _TOTALSIZE; i++)
+                        {
+                            total += unitDataList.ElementAt(count - i -1).close;
+                        }
+                        lastUnitData.avg_480 = Math.Round(total / _TOTALSIZE, 2);
+                    }
+                }
+                Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 个数{1} 平均:{2}", instrument, count, lastUnitData.avg_480));
+            }
         }
 
         //输入：q1ctp /t1ctp /q2xspeed /t2speed
@@ -424,16 +452,6 @@ namespace ConsoleProxy
                             //Broker = "9080",
                         };
                     }
-                    //t = new Trade("ctp_trade_proxy.dll")
-                    //{
-                    //	Server = "tcp://211.95.40.130:51205", 
-                    //	Broker = "1017",
-                    //};
-                    //q = new Quote("ctp_quote_proxy.dll")
-                    //{
-                    //	Server = "tcp://211.95.40.130:51213",
-                    //	Broker = "1017",
-                    //};
                     break;
                 case '2': //xSpeed
                     program.trader = new Trade("xSpeed_trade_proxy.dll")
@@ -546,316 +564,14 @@ namespace ConsoleProxy
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnError:{0}=>{1}", e.ErrorID, e.ErrorMsg);
                 Log.log(string.Format("OnRtnError:{0}=>{1}", e.ErrorID, e.ErrorMsg));
             };
-            //program.quoter.OnRtnTick += (sender, e) =>
-            //{
-            //    lock (lockThis)
-            //    {
-            //        Boolean isTriggerLow = false;
-            //        Boolean isTriggerHigh = false;
-            //        bool isStopLoss = false;
-            //        //Console.WriteLine("OnRtnTick:{0}", e.Tick.LastPrice);
-            //        //Console.WriteLine("OnRtnTick:{0}=>{1}=>{2}", e.Tick.UpdateTime, e.Tick.AskPrice, e.Tick.InstrumentID);
-            //        DateTime d1 = DateTime.Parse(e.Tick.UpdateTime);
-
-            //        if (Utils.isTradingTime(e.Tick.InstrumentID,d1) == false)
-            //            return;
-
-            //        InstrumentWatcher.updateTime(e.Tick.InstrumentID, d1);
-            //        InstrumentData instrumentdata;
-
-            //        if (program.tradeData.TryGetValue(e.Tick.InstrumentID, out instrumentdata) == false)
-            //        {
-            //            instrumentdata = new InstrumentData();
-            //            program.tradeData.Add(e.Tick.InstrumentID, instrumentdata);
-            //        }
-
-            //        LinkedList<double> _highList = instrumentdata._highList;
-            //        LinkedList<double> _lowList = instrumentdata._lowList;
-
-
-            //        if (instrumentdata.lastMin == -1 || (instrumentdata.lastMin != d1.Minute && d1.Minute % MINSPAN == 0))
-            //        {
-            //            //Console.WriteLine("OnRtnTick 目前记录数:{0} {1}", e.Tick.InstrumentID, _highList.Count);
-            //            _highList.AddLast(e.Tick.LastPrice);
-            //            if (_highList.Count > _TOTALSIZE)
-            //                _highList.RemoveFirst();
-
-            //            _lowList.AddLast(e.Tick.LastPrice);
-            //            if (_lowList.Count > _TOTALSIZE)
-            //                _lowList.RemoveFirst();
-            //            isTriggerHigh = true;
-            //            isTriggerLow = true;
-
-            //            instrumentdata.highest = 0;
-            //            instrumentdata.lowest = 1000000;
-            //            foreach (double value in _highList)
-            //            {
-            //                //Console.WriteLine("品种{0} 最高:{1} 当前k线:{2}", e.Tick.InstrumentID, highest, value);
-            //                Log.log(string.Format(Program.LogTitle + "品种{0} 最高:{1} 当前k线:{2}", e.Tick.InstrumentID, instrumentdata.highest, value),e.Tick.InstrumentID);
-
-            //                if (value > instrumentdata.highest)
-            //                    instrumentdata.highest = value;
-
-            //            }
-
-            //            foreach (double value in _lowList)
-            //            {
-            //                //Console.WriteLine("品种{0} 最低:{1} 当前k线:{2}", e.Tick.InstrumentID, lowest, value);
-            //                Log.log(string.Format("品种{0} 最低:{1} 当前k线:{2}", e.Tick.InstrumentID, instrumentdata.lowest, value), e.Tick.InstrumentID);
-            //                if (value < instrumentdata.lowest)
-            //                    instrumentdata.lowest = value;
-            //            }
-            //            //Console.WriteLine("品种{0}新K线 最高:{1} 最低:{2}", e.Tick.InstrumentID, highest, lowest);
-            //            Log.log(string.Format(Program.LogTitle + "品种{0}新K线 最高:{1} 最低:{2}", e.Tick.InstrumentID, instrumentdata.highest, instrumentdata.lowest), e.Tick.InstrumentID);
-            //        }
-            //        else
-            //        {
-            //            double _lastHigh = _highList.Last();
-            //            double _lastLow = _lowList.Last();
-            //            if (e.Tick.LastPrice > _lastHigh)
-            //            {
-            //                _highList.RemoveLast();
-            //                _highList.AddLast(e.Tick.LastPrice);
-            //                isTriggerHigh = true;
-            //            }
-
-            //            if (e.Tick.LastPrice < _lastLow)
-            //            {
-            //                _lowList.RemoveLast();
-            //                _lowList.AddLast(e.Tick.LastPrice);
-            //                isTriggerLow = true;
-            //            }
-            //        }
-
-            //        OrderField openOrder = null;
-            //        foreach (OrderField order in program.tradeCenter._tradeOrders.Values)
-            //        {
-            //            if(order.InstrumentID == e.Tick.InstrumentID && order.Offset == OffsetType.Open)
-            //            {
-            //                openOrder = order;
-            //                break;
-            //            }
-            //        }
-            //        if(openOrder !=null && program.tradeCenter._removingOrders.Contains(openOrder.OrderID) == false)
-            //        {
-            //            bool isCancel = false;
-            //            HashSet<string> waitSecond = null;
-            //            if (program._waitingForOp.TryGetValue(openOrder.InstrumentID, out waitSecond))
-            //            {
-            //                waitSecond.Add(d1.ToString("yyyy-MM-dd-HH-mm"));
-            //                if (waitSecond != null && waitSecond.Count() > STOP_OPERATION)
-            //                {
-            //                    Log.log(string.Format("品种{0} 下单超时放弃", e.Tick.InstrumentID), e.Tick.InstrumentID);
-            //                    isCancel = true;
-            //                }
-            //            }
-            //            else if (instrumentdata.holder == 1 && openOrder.Direction == DirectionType.Buy
-            //                && instrumentdata.lowest > openOrder.LimitPrice)
-            //            {
-            //                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" 
-            //                    + "Cancel buy:{0}, price:{1}, lowest {2}", openOrder.OrderID
-            //                    , openOrder.LimitPrice, instrumentdata.lowest);
-            //                Log.log(string.Format("Cancel buy:{0}, price:{1}, lowest {2}", openOrder.OrderID
-            //                    , openOrder.LimitPrice, instrumentdata.lowest), e.Tick.InstrumentID);
-            //                isCancel = true;
-            //            }
-            //            else if (instrumentdata.holder == -1 && openOrder.Direction == DirectionType.Sell
-            //                && instrumentdata.highest < openOrder.LimitPrice)
-            //            {
-            //                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]"
-            //                    + "Cancel sell:{0}, price:{1}, highest {2}", openOrder.OrderID
-            //                    , openOrder.LimitPrice, instrumentdata.highest);
-            //                Log.log(string.Format("Cancel sell:{0}, price:{1}, highest {2}", openOrder.OrderID
-            //                    , openOrder.LimitPrice, instrumentdata.highest), e.Tick.InstrumentID);
-            //                isCancel = true;
-            //            }
-                       
-            //            if(isCancel)
-            //            {
-            //                instrumentdata.holder = 0;
-            //                instrumentdata.price = 0;
-            //                program.tradeCenter._removingOrders.Add(openOrder.OrderID);
-            //                program.trader.ReqOrderAction(openOrder.OrderID);
-            //                program._waitingForOp.Remove(openOrder.InstrumentID);
-            //                openOrder = null;
-            //            }
-            //        }
-
-
-            //        instrumentdata.lastMin = d1.Minute;
-            //        InstrumentTradeConfig instrumentConfig = program._instrumentMap[e.Tick.InstrumentID];
-            //        if (instrumentConfig == null)
-            //        {
-            //            Log.log(string.Format(Program.LogTitle + "品种{0} 不在列表中", e.Tick.InstrumentID), e.Tick.InstrumentID);
-            //            return;
-            //        }
-            //        if (isTriggerHigh)
-            //        {
-            //            //Console.WriteLine("品种{0} 时间:{1} 触发新高:{2}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice);
-            //            Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 触发新高:{2} 当前最高{3}", e.Tick.InstrumentID,
-            //                e.Tick.UpdateTime, e.Tick.LastPrice, instrumentdata.highest), e.Tick.InstrumentID);
-            //            // more than _totoalSize , can trade now
-            //            if (_highList.Count >= _TOTALSIZE && e.Tick.LastPrice > instrumentdata.highest)
-            //            {
-            //                //no trade before
-            //                if (instrumentdata.holder == 0)
-            //                {
-            //                    //open buy
-            //                    //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
-            //                    if(instrumentConfig.trade)
-            //                        operatorInstrument(BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice- BACK_SPAN * program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick);
-            //                    instrumentdata.holder = 1;
-            //                    instrumentdata.isToday = true;
-            //                    instrumentdata.price = e.Tick.LastPrice - BACK_SPAN * program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick;
-
-
-            //                }
-            //                else if (instrumentdata.holder == -1)
-            //                {
-            //                    if (instrumentConfig.trade)
-            //                        operatorInstrument(BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice - BACK_SPAN * program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick);
-
-            //                    //close sell and open buy
-            //                    if (instrumentdata.isToday)
-            //                    {
-            //                        //operatord(trader, quoter, BUY_CLOSETODAY, e.Tick.InstrumentID);
-            //                        if (instrumentConfig.trade)
-            //                            operatorInstrument(BUY_CLOSETODAY, e.Tick.InstrumentID,0);
-
-            //                    }
-            //                    else
-            //                    {
-            //                        //operatord(trader, quoter, BUY_CLOSE, e.Tick.InstrumentID);
-            //                        if (instrumentConfig.trade)
-            //                            operatorInstrument(BUY_CLOSE, e.Tick.InstrumentID,0);
-
-            //                    }
-            //                    //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
-            //                    instrumentdata.holder = 1;
-            //                    instrumentdata.isToday = true;
-            //                    instrumentdata.price = e.Tick.LastPrice - BACK_SPAN * program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick;
-
-            //                }
-            //            }
-
-
-            //        }
-
-            //        else if (isTriggerLow)
-            //        {
-            //            //Console.WriteLine("品种{0} 时间:{1} 触发新低:{2}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice);
-            //            Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 触发新低:{2} 当前最低:{3}", e.Tick.InstrumentID, 
-            //                e.Tick.UpdateTime, e.Tick.LastPrice, instrumentdata.lowest), e.Tick.InstrumentID);
-
-            //            // more than _totoalSize , can trade now
-            //            if (_lowList.Count >= _TOTALSIZE && e.Tick.LastPrice < instrumentdata.lowest)
-            //            {
-            //                //no trade before
-            //                if (instrumentdata.holder == 0)
-            //                {
-            //                    //open sell
-            //                    //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
-            //                    if (instrumentConfig.trade)
-            //                        operatorInstrument(SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice + BACK_SPAN * program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick);
-            //                    instrumentdata.holder = -1;
-            //                    instrumentdata.isToday = true;
-            //                    instrumentdata.price = e.Tick.LastPrice + BACK_SPAN * program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick;
-
-            //                }
-            //                else if (instrumentdata.holder == 1)
-            //                {
-            //                    if (instrumentConfig.trade)
-            //                        operatorInstrument(SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice + BACK_SPAN * program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick);
-
-            //                    //close buy and open sell
-            //                    if (instrumentdata.isToday)
-            //                    {
-            //                        //operatord(trader, quoter, SELL_CLOSETODAY, e.Tick.InstrumentID);
-            //                        if (instrumentConfig.trade)
-            //                            operatorInstrument(SELL_CLOSETODAY, e.Tick.InstrumentID,0);
-
-            //                    }
-            //                    else
-            //                    {
-            //                        //operatord(trader, quoter, SELL_CLOSE, e.Tick.InstrumentID);
-            //                        if (instrumentConfig.trade)
-            //                            operatorInstrument(SELL_CLOSE, e.Tick.InstrumentID,0);
-            //                    }
-            //                    //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
-            //                    instrumentdata.holder = -1;
-            //                    instrumentdata.isToday = true;
-            //                    instrumentdata.price = e.Tick.LastPrice + BACK_SPAN * program.trader.DicInstrumentField[e.Tick.InstrumentID].PriceTick;
-
-            //                }
-            //            }
-            //        }
-
-                    
-            //        //没有在挂单
-            //        else if(openOrder == null)
-            //        {
-            //            if(instrumentdata.holder == 1 && instrumentdata.price - e.Tick.LastPrice > STOP_LOSS)
-            //            {
-            //                Log.log(string.Format(Program.LogTitle + "品种{0} 多头止损 {1}  {2} ", e.Tick.InstrumentID, instrumentdata.price, e.Tick.LastPrice), e.Tick.InstrumentID);
-
-            //                //close buy 
-            //                if (instrumentdata.isToday)
-            //                {
-            //                    if (instrumentConfig.trade)
-            //                        operatorInstrument(SELL_CLOSETODAY, e.Tick.InstrumentID, 0);
-
-            //                }
-            //                else
-            //                {
-            //                    if (instrumentConfig.trade)
-            //                        operatorInstrument(SELL_CLOSE, e.Tick.InstrumentID, 0);
-            //                }
-            //                instrumentdata.holder = 0;
-            //                instrumentdata.price = 0;
-            //                isStopLoss = true;
-            //            }
-            //            else if (instrumentdata.holder == -1 && e.Tick.LastPrice - instrumentdata.price > STOP_LOSS)
-            //            {
-            //                Log.log(string.Format(Program.LogTitle + "品种{0} 空头止损 {1}  {2} ", e.Tick.InstrumentID, instrumentdata.price, e.Tick.LastPrice), e.Tick.InstrumentID);
-            //                //close sell 
-            //                if (instrumentdata.isToday)
-            //                {
-            //                    if (instrumentConfig.trade)
-            //                        operatorInstrument(BUY_CLOSETODAY, e.Tick.InstrumentID, 0);
-
-            //                }
-            //                else
-            //                {
-            //                    if (instrumentConfig.trade)
-            //                        operatorInstrument(BUY_CLOSE, e.Tick.InstrumentID, 0);
-
-            //                }
-            //                instrumentdata.holder = 0;
-            //                instrumentdata.price = 0;
-            //                isStopLoss = true;
-            //            }
-
-            //        }
-
-            //        if (isTriggerHigh || isTriggerLow || isStopLoss) { 
-                        
-            //            string fileNameSerialize = FileUtil.getTradeFilePath();
-            //            string jsonString = JsonConvert.SerializeObject(program.tradeData);
-                        
-            //            File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
-            //      }
-            //    }
-            //};
-            
             program.quoter.OnRtnTick += (sender, e) =>
             {
                 lock (lockThis)
                 {
+                    if (isInit == false)
+                        return;
+
                     bool needUpdate = false;
-                    //bool isStopLoss = false;
-                    //Console.WriteLine("OnRtnTick:{0}", e.Tick.LastPrice);
-                    //Console.WriteLine("OnRtnTick:{0}=>{1}=>{2}", e.Tick.UpdateTime, e.Tick.AskPrice, e.Tick.InstrumentID);
-                    //DateTime now = DateTime.Now;
                     
                     InstrumentData currentInstrumentdata;
 
@@ -865,38 +581,15 @@ namespace ConsoleProxy
                         program.tradeData.Add(e.Tick.InstrumentID, currentInstrumentdata);
                     }
 
-                    LinkedList<UnitData> unitDataList;
+                    List<UnitData> unitDataList;
                     if (program.unitDataMap.TryGetValue(e.Tick.InstrumentID, out unitDataList) == false)
                         return;
 
-                   // LinkedList<TickData> tickDataList;
-                    //if (program.tickDataMap.TryGetValue(e.Tick.InstrumentID,out tickDataList) == true)
-                    //{
-                    //    TickData tickData = new TickData();
-                    //    tickData.datatime = e.Tick.UpdateTime;
-                    //    tickData.tick = e.Tick.LastPrice;
-                    //}
-                    DateTime d1 = DateTime.Parse(e.Tick.UpdateTime);
+                    DateTime d1 = DateTime.ParseExact(program.quoter.TradingDay + " " + e.Tick.UpdateTime, "yyyyMMdd HH:mm:ss", CultureInfo.InvariantCulture);
 
-                    
-                    //时间间隔应该在5分钟之内
-                    if( unitDataList.Count > 0)                   
+                    if (Utils.isValidData(e.Tick.InstrumentID, d1, e.Tick.UpdateTime) == false)
                     {
-                        UnitData unitData = unitDataList.ElementAt(unitDataList.Count - 1);
-
-                        DateTime d2 = DateTime.Parse(DateTime.Parse(unitData.datetime).ToString("yyyy/MM/dd") + " " + e.Tick.UpdateTime);
-                        TimeSpan timeSpan = DateTime.Now - d2;
-                        if(timeSpan.TotalMinutes < 5 && timeSpan.TotalMinutes > -5)
-                        {
-                            d1 = d2;
-                            DateTime lastDatetime = DateTime.Parse(unitData.datetime);
-                            if (String.Compare(d1.ToString(), lastDatetime.ToString(), StringComparison.Ordinal) < 0)
-                            {
-                                d1 = d1.AddDays(1);  //local machine 
-                                Log.log(e.Tick.InstrumentID + " " + e.Tick.UpdateTime + " Tick跨日");
-                            }
-                        }
-                        
+                        return;
                     }
 
                     if (Utils.isTradingTime(e.Tick.InstrumentID, d1) == false)
@@ -904,44 +597,70 @@ namespace ConsoleProxy
 
                     InstrumentWatcher.updateTime(e.Tick.InstrumentID, d1);
 
-
-
+                    
                     if (program.isNewBar(currentInstrumentdata.lastUpdateTime,d1,e.Tick.InstrumentID))
-                    //if (currentInstrumentdata.lastMin == -1 || (currentInstrumentdata.lastMin != d1.Minute && d1.Minute % MINSPAN == 0) || unitDataList.Count == 0)
                     {
+                        int count = unitDataList.Count;
+                        if (count > 0)
+                        {
+                            UnitData lastUnitData = unitDataList.Last();
+
+                            if (count > _TOTALSIZE)
+                            {
+                                double total = 0;
+                                for (int i = 0; i < _TOTALSIZE; i++)
+                                {
+                                    total += unitDataList.ElementAt(count - i -1).close;
+                                }
+                                lastUnitData.avg_480 = Math.Round(total / _TOTALSIZE, 2);
+                            }
+                            currentInstrumentdata.curAvg = lastUnitData.avg_480;
+                            Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 平均:{3}", e.Tick.InstrumentID,
+                          e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg), e.Tick.InstrumentID);
+                            needUpdate = true;
+                        }
                         UnitData unitData = new UnitData();
                         unitData.high = unitData.low = unitData.open = unitData.close = e.Tick.LastPrice;
                         unitData.datetime = d1.ToString();
-                        unitDataList.AddLast(unitData);
+                        unitDataList.Add(unitData);
 
                         Console.WriteLine(string.Format(Program.LogTitle + "new bar 品种{0} 时间:{1} 当前价格:{2}", e.Tick.InstrumentID,
                            e.Tick.UpdateTime, e.Tick.LastPrice));
 
-                        Task.Factory.StartNew(() =>
-                        {
-                            lock (lockFile)
-                            {
-                                string fileNameSerialize = FileUtil.getUnitDataPath(e.Tick.InstrumentID);
-                                string jsonString = JsonConvert.SerializeObject(unitDataList);
-                                File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
-                            }
-                        });
+
+                        //UnitData unitData = new UnitData();
+                        //unitData.high = unitData.low = unitData.open = unitData.close = e.Tick.LastPrice;
+                        //unitData.datetime = d1.ToString();
+                        //unitDataList.AddLast(unitData);
+
+                        //Console.WriteLine(string.Format(Program.LogTitle + "new bar 品种{0} 时间:{1} 当前价格:{2}", e.Tick.InstrumentID,
+                        //   e.Tick.UpdateTime, e.Tick.LastPrice));
+
+                        //Task.Factory.StartNew(() =>
+                        //{
+                        //    lock (lockFile)
+                        //    {
+                        //        string fileNameSerialize = FileUtil.getUnitDataPath(e.Tick.InstrumentID);
+                        //        string jsonString = JsonConvert.SerializeObject(unitDataList);
+                        //        File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
+                        //    }
+                        //});
                         
 
-                        if (unitDataList.Count > _TOTALSIZE)
-                        {
-                            UnitData[] unitDataArray = unitDataList.ToArray();
-                            double allColse = 0;
-                            for (int i = 0; i < _TOTALSIZE; i++)
-                            {
-                                allColse += unitDataArray[unitDataList.Count-1-i].close;
-                            }
-                            currentInstrumentdata.curAvg = allColse / _TOTALSIZE;
+                        //if (unitDataList.Count > _TOTALSIZE)
+                        //{
+                        //    UnitData[] unitDataArray = unitDataList.ToArray();
+                        //    double allColse = 0;
+                        //    for (int i = 0; i < _TOTALSIZE; i++)
+                        //    {
+                        //        allColse += unitDataArray[unitDataList.Count-1-i].close;
+                        //    }
+                        //    currentInstrumentdata.curAvg = allColse / _TOTALSIZE;
 
-                            Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 平均:{3}", e.Tick.InstrumentID,
-                           e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg), e.Tick.InstrumentID);
-                            needUpdate = true;
-                        }
+                        //    Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 平均:{3}", e.Tick.InstrumentID,
+                        //   e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg), e.Tick.InstrumentID);
+                        //    needUpdate = true;
+                        //}
                         
                     }
                     else if(unitDataList.Count>0)
@@ -961,44 +680,6 @@ namespace ConsoleProxy
 
                     }
                     
-
-                    //OrderField openOrder = null;
-                    //foreach (OrderField order in program.tradeCenter._tradeOrders.Values)
-                    //{
-                    //    if (order.InstrumentID == e.Tick.InstrumentID && order.Offset == OffsetType.Open)
-                    //    {
-                    //        openOrder = order;
-                    //        break;
-                    //    }
-                    //}
-
-                    //if (openOrder!=null)
-                    //    return;
-                    //if (openOrder != null && program.tradeCenter._removingOrders.Contains(openOrder.OrderID) == false)
-                    //{
-                    //    bool isCancel = false;
-                    //    HashSet<string> waitSecond = null;
-                    //    if (program._waitingForOp.TryGetValue(openOrder.InstrumentID, out waitSecond))
-                    //    {
-                    //        waitSecond.Add(d1.ToString("yyyy-MM-dd-HH-mm"));
-                    //        if (waitSecond != null && waitSecond.Count() > STOP_OPERATION)
-                    //        {
-                    //            Log.log(string.Format("品种{0} 下单超时放弃", e.Tick.InstrumentID), e.Tick.InstrumentID);
-                    //            isCancel = true;
-                    //        }
-                    //    }
-                        
-                    //    if (isCancel)
-                    //    {
-                    //        currentInstrumentdata.holder = 0;
-                    //        currentInstrumentdata.price = 0;
-                    //        program.tradeCenter._removingOrders.Add(openOrder.OrderID);
-                    //        program.trader.ReqOrderAction(openOrder.OrderID);
-                    //        program._waitingForOp.Remove(openOrder.InstrumentID);
-                    //        openOrder = null;
-                    //    }
-                    //}
-
 
                     currentInstrumentdata.lastUpdateTime = d1.ToString();
                     InstrumentTradeConfig instrumentConfig;
@@ -1139,42 +820,27 @@ namespace ConsoleProxy
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRspUserLogout:{0}", e.Value);
                 Log.log(string.Format("OnRspUserLogout:{0}", e.Value));
-                foreach (string key in program.unitDataMap.Keys)
-                {
-                    LinkedList<UnitData> unitDataList;
-                    if (program.unitDataMap.TryGetValue(key, out unitDataList))
-                    {
-                        if (unitDataList == null)
-                            continue;
-                        Log.log(string.Format("Quit:saving {0}", key));
+                //foreach (string key in program.unitDataMap.Keys)
+                //{
+                //    List<UnitData> unitDataList;
+                //    if (program.unitDataMap.TryGetValue(key, out unitDataList))
+                //    {
+                //        if (unitDataList == null)
+                //            continue;
+                //        Log.log(string.Format("Quit:saving {0}", key));
 
-                        Task.Factory.StartNew(() =>
-                        {
-                            lock(lockFile)
-                            {
-                                string fileNameSerialize = FileUtil.getUnitDataPath(key);
-                                string jsonString = JsonConvert.SerializeObject(unitDataList);
-                                File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
-                            }
-                        });
-
-                        //LinkedList<TickData> tickDataList;
-                        //if (program.tickDataMap.TryGetValue(key, out tickDataList))
-                        //{
-                        //    if (tickDataList == null)
-                        //        continue;
-                        //    Log.log(string.Format("Quit:saving tick {0}", key));
-
-                        //    Task.Factory.StartNew(() =>
-                        //    {
-                        //        string fileNameSerialize = FileUtil.getTickDataPath(key) + DateTime.Now.ToShortTimeString();
-                        //        string jsonString = JsonConvert.SerializeObject(tickDataList);
-                        //        File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
-
-                        //    });
-                        //}
-                    }
-                }
+                //        //Task.Factory.StartNew(() =>
+                //        //{
+                //        //    lock(lockFile)
+                //        //    {
+                //        //        string fileNameSerialize = FileUtil.getUnitDataPath(key);
+                //        //        string jsonString = JsonConvert.SerializeObject(unitDataList);
+                //        //        File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
+                //        //    }
+                //        //});
+                       
+                //    }
+                //}
             };
             program.trader.OnRtnCancel += (sender, e) =>
             {
@@ -1196,29 +862,27 @@ namespace ConsoleProxy
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnExchangeStatus:{0}=>{1}", e.Exchange, e.Status);
                 Log.log(string.Format("OnRtnExchangeStatus:{0}=>{1}", e.Exchange , e.Status));
-                //if(e.Status ==ExchangeStatusType.BeforeTrading && e.Exchange=="rb")
-                //     program.trader.ReqQryPosition();
 
                 if(e.Status == ExchangeStatusType.Closed || e.Status == ExchangeStatusType.NoTrading)
                 {
-                    foreach (string key in program.unitDataMap.Keys)
-                    {
-                        if (key.StartsWith(e.Exchange) == false)
-                            continue;
-                        LinkedList<UnitData> unitDataList;
-                        if (program.unitDataMap.TryGetValue(key, out unitDataList))
-                        {
-                            if (unitDataList == null)
-                                continue;
-                            lock (lockFile)
-                            {
-                                Log.log(string.Format("saving {0} ", key));
-                                string fileNameSerialize = FileUtil.getUnitDataPath(key);
-                                string jsonString = JsonConvert.SerializeObject(unitDataList);
-                                File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
-                            }
-                        }
-                    }
+                    //foreach (string key in program.unitDataMap.Keys)
+                    //{
+                    //    if (key.StartsWith(e.Exchange) == false)
+                    //        continue;
+                    //    LinkedList<UnitData> unitDataList;
+                    //    if (program.unitDataMap.TryGetValue(key, out unitDataList))
+                    //    {
+                    //        if (unitDataList == null)
+                    //            continue;
+                    //        lock (lockFile)
+                    //        {
+                    //            Log.log(string.Format("saving {0} ", key));
+                    //            string fileNameSerialize = FileUtil.getUnitDataPath(key);
+                    //            string jsonString = JsonConvert.SerializeObject(unitDataList);
+                    //            File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
+                    //        }
+                    //    }
+                    //}
                 }
 
             };
@@ -1255,28 +919,31 @@ namespace ConsoleProxy
             };
             program.trader.OnRtnTrade += (sender, e) =>
             {
-                Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnTrade:{0}", e.Value.TradeID);
-                Log.log(string.Format("OnRtnTrade:{0} OrderID {1}", e.Value.TradeID, e.Value.OrderID), e.Value.InstrumentID);
-                //成交 需要下委托单
-                string direction = e.Value.Direction == DirectionType.Buy ? "买" : "卖";
-                string offsetType = "开";
-                if (e.Value.Offset == OffsetType.Close)
-                    offsetType = "平";
-                else if (e.Value.Offset == OffsetType.CloseToday)
-                    offsetType = "平今";
-                Log.logTrade(string.Format("{0},{1},{2},{3},{4},{5}", e.Value.InstrumentID, e.Value.TradingDay, e.Value.TradeTime,
-                    e.Value.Price, e.Value.Volume, direction+offsetType));
-                OrderField orderField = null;
-                if(program.tradeCenter._tradeOrders.TryGetValue(e.Value.OrderID,out orderField))
-                {
-                    program.tradeCenter._tradeOrders.Remove(e.Value.OrderID);
+                lock (lockThis)
+                { 
+                    Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnTrade:{0}", e.Value.TradeID);
+                    Log.log(string.Format("OnRtnTrade:{0} OrderID {1}", e.Value.TradeID, e.Value.OrderID), e.Value.InstrumentID);
+                    //成交 需要下委托单
+                    string direction = e.Value.Direction == DirectionType.Buy ? "买" : "卖";
+                    string offsetType = "开";
+                    if (e.Value.Offset == OffsetType.Close)
+                        offsetType = "平";
+                    else if (e.Value.Offset == OffsetType.CloseToday)
+                        offsetType = "平今";
+                    Log.logTrade(string.Format("{0},{1},{2},{3},{4},{5}", e.Value.InstrumentID, e.Value.TradingDay, e.Value.TradeTime,
+                        e.Value.Price, e.Value.Volume, direction+offsetType));
+                    OrderField orderField = null;
+                    if(program.tradeCenter._tradeOrders.TryGetValue(e.Value.OrderID,out orderField))
+                    {
+                        program.tradeCenter._tradeOrders.Remove(e.Value.OrderID);
+                    }
+                    HashSet<string> waitSecond = null;
+                    if (program._waitingForOp.TryGetValue(e.Value.InstrumentID, out waitSecond))
+                    {
+                        program._waitingForOp.Remove(e.Value.InstrumentID);
+                    }
+                    program.trader.ReqQryPosition();
                 }
-                HashSet<string> waitSecond = null;
-                if (program._waitingForOp.TryGetValue(e.Value.InstrumentID, out waitSecond))
-                {
-                    program._waitingForOp.Remove(e.Value.InstrumentID);
-                }
-                program.trader.ReqQryPosition();
             };
 
             program.trader.ReqConnect();
@@ -1398,35 +1065,37 @@ namespace ConsoleProxy
                 
             }
 
+            program.mongoDB = MongoDbHepler.GetDatabase(connectionString, dbName);
+
             foreach (string key in program._instrumentMap.Keys)
             {
-                string unitFileName = FileUtil.getUnitDataPath(key);
-                LinkedList<UnitData> unitData = new LinkedList<UnitData>();
-                if (File.Exists(unitFileName))
-                {
-                    string text = File.ReadAllText(unitFileName);
-                    unitData = JsonConvert.DeserializeObject<LinkedList<UnitData>>(text);
-                }
+                program.initUnitDataMap(key);
+                //string unitFileName = FileUtil.getUnitDataPath(key);
+                //LinkedList<UnitData> unitData = new LinkedList<UnitData>();
+                //if (File.Exists(unitFileName))
+                //{
+                //    string text = File.ReadAllText(unitFileName);
+                //    unitData = JsonConvert.DeserializeObject<LinkedList<UnitData>>(text);
+                //}
 
-                program.unitDataMap.Add(key, unitData);
-                if (unitData.Count > _TOTALSIZE)
-                {
-                    UnitData[] unitDataArray = unitData.ToArray();
-                    double allColse = 0;
-                    for (int i = 0; i < _TOTALSIZE; i++)
-                    {
-                        allColse += unitDataArray[unitData.Count - 1 - i].close;
-                    }
-                    Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE));
-                    Log.log(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE), key);
-                }
+                //program.unitDataMap.Add(key, unitData);
+                //if (unitData.Count > _TOTALSIZE)
+                //{
+                //    UnitData[] unitDataArray = unitData.ToArray();
+                //    double allColse = 0;
+                //    for (int i = 0; i < _TOTALSIZE; i++)
+                //    {
+                //        allColse += unitDataArray[unitData.Count - 1 - i].close;
+                //    }
+                //    Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE));
+                //    Log.log(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE), key);
+                //}
 
-                //LinkedList<TickData> tickData = new LinkedList<TickData>();
-                //program.tickDataMap.Add(key, tickData);
 
             }
             if (program.trader.IsLogin)
                 program.subscribeInstruments();
+            program.isInited = true;
 
         Inst:
             Console.WriteLine(Program.LogTitle + "q:退出  1-BK  2-SP  3-SK  4-BP  5-撤单");
@@ -1505,22 +1174,22 @@ namespace ConsoleProxy
                 case 's':
                     foreach (string key in program.unitDataMap.Keys)
                     {
-                        LinkedList<UnitData> unitDataList;
+                        List<UnitData> unitDataList;
                         if (program.unitDataMap.TryGetValue(key, out unitDataList))
                         {
                             if (unitDataList == null)
                                 continue;
                             Log.log(string.Format("Quit:saving {0} ", key));
 
-                            Task.Factory.StartNew(() =>
-                            {
-                                lock(lockFile)
-                                {
-                                    string fileNameSerialize = FileUtil.getUnitDataPath(key);
-                                    string jsonString = JsonConvert.SerializeObject(unitDataList);
-                                    File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
-                                }
-                            });
+                            //Task.Factory.StartNew(() =>
+                            //{
+                            //    lock(lockFile)
+                            //    {
+                            //        string fileNameSerialize = FileUtil.getUnitDataPath(key);
+                            //        string jsonString = JsonConvert.SerializeObject(unitDataList);
+                            //        File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
+                            //    }
+                            //});
                         }
                     }
                     break;
@@ -1545,26 +1214,26 @@ namespace ConsoleProxy
                         program.quoter.ReqUserLogout();
                         program.trader.ReqUserLogout();
                     }
-                    foreach (string key in program.unitDataMap.Keys)
-                    {
-                        LinkedList<UnitData> unitDataList;
-                        if (program.unitDataMap.TryGetValue(key, out unitDataList))
-                        {
-                            if (unitDataList == null)
-                                continue;
-                            Log.log(string.Format("Quit:saving {0} ", key));
+                    //foreach (string key in program.unitDataMap.Keys)
+                    //{
+                    //    LinkedList<UnitData> unitDataList;
+                    //    if (program.unitDataMap.TryGetValue(key, out unitDataList))
+                    //    {
+                    //        if (unitDataList == null)
+                    //            continue;
+                    //        Log.log(string.Format("Quit:saving {0} ", key));
                             
-                            Task.Factory.StartNew(() =>
-                            {
-                                lock(lockFile)
-                                {
-                                    string fileNameSerialize = FileUtil.getUnitDataPath(key);
-                                    string jsonString = JsonConvert.SerializeObject(unitDataList);
-                                    File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
-                                }
-                            });
-                        }
-                    }
+                    //        Task.Factory.StartNew(() =>
+                    //        {
+                    //            lock(lockFile)
+                    //            {
+                    //                string fileNameSerialize = FileUtil.getUnitDataPath(key);
+                    //                string jsonString = JsonConvert.SerializeObject(unitDataList);
+                    //                File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
+                    //            }
+                    //        });
+                    //    }
+                    //}
                     program.tradeCenter.stop();
                     program.tradeCenter = null;
                     InstrumentWatcher.flag = false;
@@ -1588,22 +1257,7 @@ namespace ConsoleProxy
                         ot = OrderType.FOK;
                         break;
                 }
-                //MarketData tick;
-                //if (quoter.DicTick.TryGetValue(inst, out tick))
-                //{
-                //    double price = dire == DirectionType.Buy ? tick.AskPrice : tick.BidPrice;
-                //    _orderId = -1;
-                //    Console.WriteLine(trader.ReqOrderInsert(inst, dire, offset, price, 1, pType: ot));
-                //    for (int i = 0; i < 3; ++i)
-                //    {
-                //        Thread.Sleep(200);
-                //        if (-1 != _orderId)
-                //        {
-                //            Console.WriteLine(Program.LogTitle + "委托标识:" + _orderId);
-                //            break;
-                //        }
-                //    }
-                //}
+               
             }
             goto Inst;
             End:
