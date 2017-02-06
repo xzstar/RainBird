@@ -43,7 +43,8 @@ namespace ConsoleProxy
     {
         public string instrument;
         public bool trade;
-        public int volumn;
+        public int closevolumn;
+        public int openvolumn;
         public int span;
     }
 
@@ -68,7 +69,7 @@ namespace ConsoleProxy
         TradeCenter tradeCenter;
         static Object lockFile = new Object();
         private static ConcurrentQueue<TradeItem> _tradeQueue = new ConcurrentQueue<TradeItem>();
-        public const bool isTest = true;
+        public const bool isTest = false;
         public static string LogTitle = isTest?"[测试]":"[正式]";
 
         private List<InstrumentTradeConfig> _instrumentList = new List<InstrumentTradeConfig>();
@@ -85,18 +86,12 @@ namespace ConsoleProxy
         /// 指定的数据库
         /// </summary>
         private const string dbName = "data_15min";
-        /// <summary>
-        /// 指定的表
-        /// </summary>
-        //private const string tbName = "table_text";
-
-        //static String instrument;//= "RM705";
-        //static String instrument_1m = "_1m";
+        
         static String instrument_15m = "_15m";
 
         private MongoDatabase mongoDB;
 
-        private bool isInited = false;
+        private bool isInit = false;
 
         private static void operatord(Trade t, Quote q, int op, string inst)
         {
@@ -183,6 +178,8 @@ namespace ConsoleProxy
         }
         private static void operatorInstrument(int op, string inst, double price,int volumn)
         {
+            if (volumn == 0)
+                volumn = 1;
             TradeItem tradeItem = new TradeItem(inst, op, price,volumn);
 
             lock (_tradeQueue)
@@ -195,7 +192,7 @@ namespace ConsoleProxy
         {
             foreach (InstrumentTradeConfig inst in _instrumentList)
             {
-                Console.WriteLine(Program.LogTitle + "品种:{0} 交易:{1} 仓位:{2}",inst.instrument,inst.trade?"YES":"NO",inst.volumn);
+                Console.WriteLine(Program.LogTitle + "品种:{0} 交易:{1} 开仓位:{2} 平仓位:{3}",inst.instrument,inst.trade?"YES":"NO",inst.openvolumn,inst.closevolumn);
 
                 string instrument = inst.instrument;
                 quoter.ReqSubscribeMarketData(instrument);
@@ -371,6 +368,8 @@ namespace ConsoleProxy
         //Todo lastMin 加上日期时间，避免涨跌停无数据，需要判断时差超过15分钟也要新bar
         private bool isNewBar(string lastUpdateTime, DateTime dt, string instrument)
         {
+            if (lastUpdateTime == null || lastUpdateTime == "")
+                return true;
             DateTime lastUpdateDT = DateTime.Parse(lastUpdateTime);
             if (lastUpdateTime == null || ((lastUpdateDT.Hour != dt.Hour || lastUpdateDT.Minute != dt.Minute) && isOpenMin(dt)))
                 return true;
@@ -412,7 +411,7 @@ namespace ConsoleProxy
         {
             Program program = new Program();
             System.Object lockThis = new System.Object();
-            bool isInit = true;
+            //bool isInit = true;
            
         R:
             Console.WriteLine(Program.LogTitle + "选择接口:\t1-CTP  2-xSpeed  3-Femas  4-股指仿真  5-外汇仿真  6-郑商商品期权仿真");
@@ -568,7 +567,7 @@ namespace ConsoleProxy
             {
                 lock (lockThis)
                 {
-                    if (isInit == false)
+                    if (program.isInit == false)
                         return;
 
                     bool needUpdate = false;
@@ -596,8 +595,9 @@ namespace ConsoleProxy
                         return;
 
                     InstrumentWatcher.updateTime(e.Tick.InstrumentID, d1);
+                    //Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2}", e.Tick.InstrumentID,
+                    //       e.Tick.UpdateTime, e.Tick.LastPrice));
 
-                    
                     if (program.isNewBar(currentInstrumentdata.lastUpdateTime,d1,e.Tick.InstrumentID))
                     {
                         int count = unitDataList.Count;
@@ -703,7 +703,7 @@ namespace ConsoleProxy
                             //open buy
                             //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
                             if (instrumentConfig.trade)
-                                operatorInstrument(BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice);
+                                operatorInstrument(BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentConfig.openvolumn);
                             currentInstrumentdata.holder = 1;
                             currentInstrumentdata.isToday = true;
                             currentInstrumentdata.price = e.Tick.LastPrice;
@@ -713,21 +713,21 @@ namespace ConsoleProxy
                         else if (currentInstrumentdata.holder == -1)
                         {
                             if (instrumentConfig.trade)
-                                operatorInstrument(BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice);
+                                operatorInstrument(BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentConfig.openvolumn);
 
                             //close sell and open buy
                             if (currentInstrumentdata.isToday)
                             {
                                 //operatord(trader, quoter, BUY_CLOSETODAY, e.Tick.InstrumentID);
                                 if (instrumentConfig.trade)
-                                    operatorInstrument(BUY_CLOSETODAY, e.Tick.InstrumentID, 0);
+                                    operatorInstrument(BUY_CLOSETODAY, e.Tick.InstrumentID, 0,instrumentConfig.closevolumn);
 
                             }
                             else
                             {
                                 //operatord(trader, quoter, BUY_CLOSE, e.Tick.InstrumentID);
                                 if (instrumentConfig.trade)
-                                    operatorInstrument(BUY_CLOSE, e.Tick.InstrumentID, 0);
+                                    operatorInstrument(BUY_CLOSE, e.Tick.InstrumentID, 0, instrumentConfig.closevolumn);
 
                             }
                             //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
@@ -738,8 +738,8 @@ namespace ConsoleProxy
                         }
 
                         if(needUpdate)
-                            Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}+span:{4}", e.Tick.InstrumentID,
-                          e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentConfig.span), e.Tick.InstrumentID);
+                            Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}+span:{4} 仓位:{5}", e.Tick.InstrumentID,
+                          e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentConfig.span, instrumentConfig.openvolumn), e.Tick.InstrumentID);
 
                     }
 
@@ -753,7 +753,7 @@ namespace ConsoleProxy
                             //open sell
                             //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
                             if (instrumentConfig.trade)
-                                operatorInstrument(SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice);
+                                operatorInstrument(SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice,instrumentConfig.openvolumn);
                             currentInstrumentdata.holder = -1;
                             currentInstrumentdata.isToday = true;
                             currentInstrumentdata.price = e.Tick.LastPrice;
@@ -763,21 +763,21 @@ namespace ConsoleProxy
                         else if (currentInstrumentdata.holder == 1)
                         {
                             if (instrumentConfig.trade)
-                                operatorInstrument(SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice);
+                                operatorInstrument(SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice,instrumentConfig.openvolumn);
 
                             //close buy and open sell
                             if (currentInstrumentdata.isToday)
                             {
                                 //operatord(trader, quoter, SELL_CLOSETODAY, e.Tick.InstrumentID);
                                 if (instrumentConfig.trade)
-                                    operatorInstrument(SELL_CLOSETODAY, e.Tick.InstrumentID, 0);
+                                    operatorInstrument(SELL_CLOSETODAY, e.Tick.InstrumentID, 0,instrumentConfig.closevolumn);
 
                             }
                             else
                             {
                                 //operatord(trader, quoter, SELL_CLOSE, e.Tick.InstrumentID);
                                 if (instrumentConfig.trade)
-                                    operatorInstrument(SELL_CLOSE, e.Tick.InstrumentID, 0);
+                                    operatorInstrument(SELL_CLOSE, e.Tick.InstrumentID, 0,instrumentConfig.closevolumn);
                             }
                             //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
                             currentInstrumentdata.holder = -1;
@@ -787,8 +787,8 @@ namespace ConsoleProxy
                         }
                         
                         if(needUpdate)
-                            Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}-span:{4}", e.Tick.InstrumentID,
-                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentConfig.span), e.Tick.InstrumentID);
+                            Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}-span:{4} 仓位:{5}", e.Tick.InstrumentID,
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentConfig.span, instrumentConfig.openvolumn), e.Tick.InstrumentID);
 
                     }
 
@@ -803,11 +803,9 @@ namespace ConsoleProxy
             };
             program.trader.OnFrontConnected += (sender, e) =>
             {
-                if(Utils.isTradingTimeNow() || Utils.isLogInTimeNow()|| isInit)
+                if(Utils.isTradingTimeNow() || Utils.isLogInTimeNow())
                     program.trader.ReqUserLogin();
 
-                if (isInit)
-                    isInit = false;
             };
             program.trader.OnRspUserLogin += (sender, e) =>
             {
@@ -1028,7 +1026,8 @@ namespace ConsoleProxy
                         InstrumentTradeConfig instrumentConfig = new InstrumentTradeConfig();
                         instrumentConfig.instrument = inst;
                         instrumentConfig.trade = true;
-                        instrumentConfig.volumn = 1;
+                        instrumentConfig.openvolumn = 1;
+                        instrumentConfig.closevolumn = 1;
                         instrumentList.Add(instrumentConfig);
                         
                     }
@@ -1049,7 +1048,8 @@ namespace ConsoleProxy
                 InstrumentTradeConfig instrumentConfig = new InstrumentTradeConfig();
                 instrumentConfig.instrument = inst;
                 instrumentConfig.trade = true;
-                instrumentConfig.volumn = 1;
+                instrumentConfig.openvolumn = 1;
+                instrumentConfig.closevolumn = 1;
                 program._instrumentList.Clear();
                 program._instrumentList.Add(instrumentConfig);
                 program._instrumentMap.Add(inst, instrumentConfig);
@@ -1095,7 +1095,7 @@ namespace ConsoleProxy
             }
             if (program.trader.IsLogin)
                 program.subscribeInstruments();
-            program.isInited = true;
+            program.isInit = true;
 
         Inst:
             Console.WriteLine(Program.LogTitle + "q:退出  1-BK  2-SP  3-SK  4-BP  5-撤单");
