@@ -12,6 +12,8 @@ using System.Threading.Tasks;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System.Globalization;
+using StackExchange.Redis;
+
 
 namespace ConsoleProxy
 {
@@ -52,6 +54,31 @@ namespace ConsoleProxy
     //    public int span;
     //}
 
+    class Deal
+    {
+        public string user;
+        public string instrument;
+        public string direction;
+        public string holders;
+        public string price;
+        public string time;
+
+    }
+
+    class TimeBarInfo
+    {
+        public string user;
+        public string instrument;
+        public string price;
+        public string time;
+    }
+
+    class HeartBeat
+    {
+        public string user;
+        public long timestamp;
+    }
+
 
     class Program
     {
@@ -71,9 +98,13 @@ namespace ConsoleProxy
         Trade trader;
         Quote quoter;
         TradeCenter tradeCenter;
+        string REDIS_HOST = "127.0.0.1";
+        ConnectionMultiplexer redis;
+        ISubscriber redisSubscriber;
+
         static Object lockFile = new Object();
         private static ConcurrentQueue<TradeItem> _tradeQueue = new ConcurrentQueue<TradeItem>();
-        public const bool isTest = false;
+        public const bool isTest = true;
         public static string LogTitle = isTest?"[测试]":"[正式]";
 
         //private List<InstrumentTradeConfig> _instrumentList = new List<InstrumentTradeConfig>();
@@ -426,6 +457,38 @@ namespace ConsoleProxy
             }
         }
 
+        public static long GetTimeStamp()
+        {
+            TimeSpan ts = DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, 0);
+            return Convert.ToInt64(ts.TotalSeconds);
+        }
+        private void startHeartBeat()
+        {
+            Task.Factory.StartNew(() =>
+            {
+                while (true)
+                {
+                    if (redisSubscriber != null)
+                    {
+                        HeartBeat heartBeat = new HeartBeat();
+                        heartBeat.user = trader.Investor;
+                        heartBeat.timestamp = GetTimeStamp();
+                        try
+                        {
+                            redisSubscriber.Publish("heartbeat", JsonConvert.SerializeObject(heartBeat));
+                            Thread.Sleep(30000);
+
+                        }
+                        catch (Exception err)
+                        {
+                            Log.log(string.Format("heartbeat publish err {0} ", err.Message));
+                            return;
+                        }
+
+                    }
+                }
+            });
+        }
         //输入：q1ctp /t1ctp /q2xspeed /t2speed
         private static void Main(string[] args)
         {
@@ -633,6 +696,25 @@ namespace ConsoleProxy
                                     total += unitDataList.ElementAt(count - i -1).close;
                                 }
                                 lastUnitData.avg_480 = Math.Round(total / _TOTALSIZE, 2);
+
+                                if (program.redisSubscriber != null)
+                                {
+                                    TimeBarInfo timeBarInfo = new TimeBarInfo();
+                                    timeBarInfo.user = program.trader.Investor;
+                                    timeBarInfo.instrument = e.Tick.InstrumentID;
+                                    timeBarInfo.price = Convert.ToString(lastUnitData.avg_480);
+                                    timeBarInfo.time = program.quoter.TradingDay + " " + e.Tick.UpdateTime;
+                                    try
+                                    {
+                                        program.redisSubscriber.Publish("timebarinfo", JsonConvert.SerializeObject(timeBarInfo));
+
+                                    }
+                                    catch(Exception err)
+                                    {
+                                        Log.log(string.Format("timebarinfo publish err {0} ", err.Message));
+                                    }
+                                }
+
                             }
                             currentInstrumentdata.curAvg = lastUnitData.avg_480;
                             Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 平均:{3}", e.Tick.InstrumentID,
@@ -961,6 +1043,24 @@ namespace ConsoleProxy
                         program._waitingForOp.Remove(e.Value.InstrumentID);
                     }
                     program.trader.ReqQryPosition();
+
+                    if (program.redisSubscriber != null)
+                    { 
+                        Deal deal= new Deal();
+                        deal.user = program.trader.Investor;
+                        deal.instrument = e.Value.InstrumentID;
+                        deal.price = Convert.ToString(e.Value.Price);
+                        deal.time = e.Value.TradingDay + " " + e.Value.TradeTime;
+                        deal.direction = direction + offsetType;
+                        deal.holders = Convert.ToString(e.Value.Volume);
+                        try {
+                            program.redisSubscriber.Publish("deal", JsonConvert.SerializeObject(deal));
+                        }
+                        catch (Exception err)
+                        {
+                            Log.log(string.Format("deal publish err {0} ", err.Message));
+                        }
+                    }
                 }
             };
 
@@ -1137,7 +1237,19 @@ namespace ConsoleProxy
                 program.subscribeInstruments();
             program.isInit = true;
 
-        Inst:
+            try
+            { 
+                //取连接对象
+                program.redis = ConnectionMultiplexer.Connect(program.REDIS_HOST);
+                //取得订阅对象
+                program.redisSubscriber = program.redis.GetSubscriber();
+                program.startHeartBeat();
+            }
+            catch(Exception e)
+            {
+
+            }
+            Inst:
             Console.WriteLine(Program.LogTitle + "q:退出  1-BK  2-SP  3-SK  4-BP  5-撤单");
             Console.WriteLine("a-交易所状态  b-委托  c-成交  d-持仓  e-合约  f-权益 g-换合约 h-平所有仓位 s-立刻保存 t-当前值");
 
