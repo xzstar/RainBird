@@ -805,80 +805,133 @@ namespace ConsoleProxy
                         Log.log(string.Format(Program.LogTitle + "品种{0} 不在列表中", e.Tick.InstrumentID), e.Tick.InstrumentID);
                         return;
                     }
-                    if (currentInstrumentdata.curAvg != 0 && e.Tick.LastPrice > currentInstrumentdata.curAvg + instrumentData.span)
+
+                    if (instrumentData.trade == false)
+                    {
+                        return;
+                    }
+
+                    if (currentInstrumentdata.curAvg == 0)
+                    {
+                        return;
+                    }
+
+                    int pos = instrumentData.closevolumn;
+                    PositionField posField;
+                    if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
+                    {
+                        pos = posField.TdPosition;
+                    }
+
+                    if (e.Tick.LastPrice > currentInstrumentdata.curAvg && currentInstrumentdata.holder == -1)
+                    {
+                        //close sell
+                        if (currentInstrumentdata.isToday)
+                        {
+                            operatorInstrument(TradeCenter.BUY_CLOSETODAY, e.Tick.InstrumentID, 0, pos);
+                        }
+                        else
+                        {
+                            operatorInstrument(TradeCenter.BUY_CLOSE, e.Tick.InstrumentID, 0, pos);
+                        }
+                        currentInstrumentdata.holder = 0;
+                        currentInstrumentdata.isToday = true;
+                        currentInstrumentdata.price = e.Tick.LastPrice;
+                        needUpdate = true;
+                        Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3} 平仓:{4}", e.Tick.InstrumentID,
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos), e.Tick.InstrumentID);
+
+                    }
+                    else if (e.Tick.LastPrice < currentInstrumentdata.curAvg && currentInstrumentdata.holder == 1)
+                    {
+                        //close buy 
+                        if (currentInstrumentdata.isToday)
+                        {
+                            operatorInstrument(TradeCenter.SELL_CLOSETODAY, e.Tick.InstrumentID, 0, pos);
+                            
+                        }
+                        else
+                        {
+                            operatorInstrument(TradeCenter.SELL_CLOSE, e.Tick.InstrumentID, 0, pos);
+                        }
+                        currentInstrumentdata.holder = 0;
+                        currentInstrumentdata.isToday = true;
+                        currentInstrumentdata.price = e.Tick.LastPrice;
+                        needUpdate = true;
+                        Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3} 平仓:{4}", e.Tick.InstrumentID,
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos), e.Tick.InstrumentID);
+                    }
+
+
+                    if (e.Tick.LastPrice > currentInstrumentdata.curAvg + instrumentData.span)
                     {
                         //Console.WriteLine("品种{0} 时间:{1} 触发新高:{2}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice);
-
                         //no trade before
                         if (currentInstrumentdata.holder == 0)
                         {
                             //open buy
                             //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
-                            if (instrumentData.trade)
-                                operatorInstrument(TradeCenter.BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentData.openvolumn);
+                            operatorInstrument(TradeCenter.BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentData.openvolumn);
                             currentInstrumentdata.holder = 1;
                             currentInstrumentdata.isToday = true;
                             currentInstrumentdata.price = e.Tick.LastPrice;
                             needUpdate = true;
-
-                        }
-                        else if (currentInstrumentdata.holder == -1)
-                        {
-                            if (instrumentData.trade)
-                                operatorInstrument(TradeCenter.BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentData.openvolumn);
-
-                            //close sell and open buy
-                            if (currentInstrumentdata.isToday)
-                            {
-                                //operatord(trader, quoter, BUY_CLOSETODAY, e.Tick.InstrumentID);
-                                if (instrumentData.trade)
-                                {
-                                    PositionField posField;
-                                    if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
-                                    {
-                                        int pos = posField.TdPosition;
-                                        operatorInstrument(TradeCenter.BUY_CLOSETODAY, e.Tick.InstrumentID, 0, pos);
-                                    }
-                                    else
-                                    {
-                                        //避免本地没有同步到数据
-                                        operatorInstrument(TradeCenter.BUY_CLOSETODAY, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
-                                    }
-                                }
-
-                            }
-                            else
-                            {
-                                //operatord(trader, quoter, BUY_CLOSE, e.Tick.InstrumentID);
-                                if (instrumentData.trade)
-                                {
-                                    PositionField posField;
-                                    if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
-                                    {
-                                        int pos = posField.YdPosition;
-                                        operatorInstrument(TradeCenter.BUY_CLOSE, e.Tick.InstrumentID, 0, pos);
-                                    }
-                                    else {
-                                        //避免本地没有同步到数据
-                                        operatorInstrument(TradeCenter.BUY_CLOSE, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
-                                    }
-                                }
-
-                            }
-                            //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
-                            currentInstrumentdata.holder = 1;
-                            currentInstrumentdata.isToday = true;
-                            currentInstrumentdata.price = e.Tick.LastPrice;
-                            needUpdate = true;
-                        }
-
-                        if (needUpdate)
                             Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}+span:{4} 仓位:{5}", e.Tick.InstrumentID,
-                          e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn), e.Tick.InstrumentID);
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn), e.Tick.InstrumentID);
 
+                        }
+                        //else if (currentInstrumentdata.holder == -1)
+                        //{
+                        //    if (instrumentData.trade)
+                        //        operatorInstrument(TradeCenter.BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentData.openvolumn);
+
+                        //    //close sell and open buy
+                        //    if (currentInstrumentdata.isToday)
+                        //    {
+                        //        //operatord(trader, quoter, BUY_CLOSETODAY, e.Tick.InstrumentID);
+                        //        if (instrumentData.trade)
+                        //        {
+                        //            PositionField posField;
+                        //            if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
+                        //            {
+                        //                int pos = posField.TdPosition;
+                        //                operatorInstrument(TradeCenter.BUY_CLOSETODAY, e.Tick.InstrumentID, 0, pos);
+                        //            }
+                        //            else
+                        //            {
+                        //                //避免本地没有同步到数据
+                        //                operatorInstrument(TradeCenter.BUY_CLOSETODAY, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
+                        //            }
+                        //        }
+
+                        //    }
+                        //    else
+                        //    {
+                        //        //operatord(trader, quoter, BUY_CLOSE, e.Tick.InstrumentID);
+                        //        if (instrumentData.trade)
+                        //        {
+                        //            PositionField posField;
+                        //            if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
+                        //            {
+                        //                int pos = posField.YdPosition;
+                        //                operatorInstrument(TradeCenter.BUY_CLOSE, e.Tick.InstrumentID, 0, pos);
+                        //            }
+                        //            else {
+                        //                //避免本地没有同步到数据
+                        //                operatorInstrument(TradeCenter.BUY_CLOSE, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
+                        //            }
+                        //        }
+
+                        //    }
+                        //    //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
+                        //    currentInstrumentdata.holder = 1;
+                        //    currentInstrumentdata.isToday = true;
+                        //    currentInstrumentdata.price = e.Tick.LastPrice;
+                        //    needUpdate = true;
+                        //}
                     }
 
-                    else if (currentInstrumentdata.curAvg != 0 && e.Tick.LastPrice < currentInstrumentdata.curAvg - instrumentData.span)
+                    else if (e.Tick.LastPrice < currentInstrumentdata.curAvg - instrumentData.span)
                     {
                         //Console.WriteLine("品种{0} 时间:{1} 触发新低:{2}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice);
 
@@ -887,69 +940,64 @@ namespace ConsoleProxy
                         {
                             //open sell
                             //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
-                            if (instrumentData.trade)
-                                operatorInstrument(TradeCenter.SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentData.openvolumn);
+                            operatorInstrument(TradeCenter.SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentData.openvolumn);
                             currentInstrumentdata.holder = -1;
                             currentInstrumentdata.isToday = true;
                             currentInstrumentdata.price = e.Tick.LastPrice;
                             needUpdate = true;
-
-                        }
-                        else if (currentInstrumentdata.holder == 1)
-                        {
-                            if (instrumentData.trade)
-                                operatorInstrument(TradeCenter.SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentData.openvolumn);
-
-                            //close buy and open sell
-                            if (currentInstrumentdata.isToday)
-                            {
-                                //operatord(trader, quoter, SELL_CLOSETODAY, e.Tick.InstrumentID);
-                                if (instrumentData.trade)
-                                {
-                                    PositionField posField;
-                                    if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
-                                    {
-                                        int pos = posField.TdPosition;
-                                        operatorInstrument(TradeCenter.SELL_CLOSETODAY, e.Tick.InstrumentID, 0, pos);
-
-                                    }
-                                    else
-                                    {
-                                        //避免本地没有同步到数据
-                                        operatorInstrument(TradeCenter.SELL_CLOSETODAY, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
-                                    }
-                                }
-
-                            }
-                            else
-                            {
-                                //operatord(trader, quoter, SELL_CLOSE, e.Tick.InstrumentID);
-                                if (instrumentData.trade)
-                                {
-                                    PositionField posField;
-                                    if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
-                                    {
-                                        int pos = posField.YdPosition;
-                                        operatorInstrument(TradeCenter.SELL_CLOSE, e.Tick.InstrumentID, 0, pos);
-                                    }
-                                    else
-                                    {
-                                        //避免本地没有同步到数据
-                                        operatorInstrument(TradeCenter.SELL_CLOSE, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
-                                    }
-                                }
-                            }
-                            //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
-                            currentInstrumentdata.holder = -1;
-                            currentInstrumentdata.isToday = true;
-                            currentInstrumentdata.price = e.Tick.LastPrice;
-                            needUpdate = true;
-                        }
-
-                        if (needUpdate)
                             Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}-span:{4} 仓位:{5}", e.Tick.InstrumentID,
-                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn), e.Tick.InstrumentID);
+                        e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn), e.Tick.InstrumentID);
+                        }
+                        //else if (currentInstrumentdata.holder == 1)
+                        //{
+                        //    if (instrumentData.trade)
+                        //        operatorInstrument(TradeCenter.SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentData.openvolumn);
 
+                        //    //close buy and open sell
+                        //    if (currentInstrumentdata.isToday)
+                        //    {
+                        //        //operatord(trader, quoter, SELL_CLOSETODAY, e.Tick.InstrumentID);
+                        //        if (instrumentData.trade)
+                        //        {
+                        //            PositionField posField;
+                        //            if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
+                        //            {
+                        //                int pos = posField.TdPosition;
+                        //                operatorInstrument(TradeCenter.SELL_CLOSETODAY, e.Tick.InstrumentID, 0, pos);
+
+                        //            }
+                        //            else
+                        //            {
+                        //                //避免本地没有同步到数据
+                        //                operatorInstrument(TradeCenter.SELL_CLOSETODAY, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
+                        //            }
+                        //        }
+
+                        //    }
+                        //    else
+                        //    {
+                        //        //operatord(trader, quoter, SELL_CLOSE, e.Tick.InstrumentID);
+                        //        if (instrumentData.trade)
+                        //        {
+                        //            PositionField posField;
+                        //            if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
+                        //            {
+                        //                int pos = posField.YdPosition;
+                        //                operatorInstrument(TradeCenter.SELL_CLOSE, e.Tick.InstrumentID, 0, pos);
+                        //            }
+                        //            else
+                        //            {
+                        //                //避免本地没有同步到数据
+                        //                operatorInstrument(TradeCenter.SELL_CLOSE, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
+                        //            }
+                        //        }
+                        //    }
+                        //    //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
+                        //    currentInstrumentdata.holder = -1;
+                        //    currentInstrumentdata.isToday = true;
+                        //    currentInstrumentdata.price = e.Tick.LastPrice;
+                        //    needUpdate = true;
+                        //}
                     }
 
                     if (needUpdate)
