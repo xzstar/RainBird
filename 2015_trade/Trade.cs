@@ -133,11 +133,12 @@ namespace Trade2015
 		/// 持仓
 		/// </summary>
 		public ConcurrentDictionary<string, PositionField> DicPositionField = new ConcurrentDictionary<string, PositionField>();
-
-		/// <summary>
-		/// 资金权益
-		/// </summary>
-		public TradingAccount TradingAccount = new TradingAccount();
+        private ConcurrentDictionary<string, PositionField> tempDicPositionField = new ConcurrentDictionary<string, PositionField>();
+        
+        /// <summary>
+        /// 资金权益
+        /// </summary>
+        public TradingAccount TradingAccount = new TradingAccount();
 
 		#region 注册响应
 		public delegate void FrontConnected(object sender, EventArgs e);
@@ -505,21 +506,31 @@ namespace Trade2015
 			}
 		}
 
-		void _import_OnRspQryPositiont(PositionField pField, bool pLast)
-		{
-			//无数据时,也会返回一条空记录
-			if (string.IsNullOrEmpty(pField.InstrumentID) || pField.Position <=0)
-			{
-				return;
-			}
-			PositionField f = DicPositionField.GetOrAdd(pField.InstrumentID + "_" + pField.Direction, new PositionField());
-			foreach (var info in pField.GetType().GetFields())
-			{
-				f.GetType().GetField(info.Name).SetValue(f, Convert.ChangeType(info.GetValue(pField), f.GetType().GetField(info.Name).FieldType));
-			}
-		}
+        void _import_OnRspQryPositiont(PositionField pField, bool pLast)
+        {
+            //无数据时,也会返回一条空记录
+            if (string.IsNullOrEmpty(pField.InstrumentID) || pField.Position <= 0)
+            {
+                return;
+            }
+            PositionField f = tempDicPositionField.GetOrAdd(pField.InstrumentID + "_" + pField.Direction, new PositionField());
+            foreach (var info in pField.GetType().GetFields())
+            {
+                f.GetType().GetField(info.Name).SetValue(f, Convert.ChangeType(info.GetValue(pField), f.GetType().GetField(info.Name).FieldType));
+            }
+            Console.WriteLine("_import_OnRspQryPositiont {0},{1},{2}", pField.InstrumentID, pField.Direction, pField.Position);
+            if (pLast)
+            {
+                DicPositionField.Clear();
+                foreach (string key in tempDicPositionField.Keys)
+                {
+                    DicPositionField.GetOrAdd(key, tempDicPositionField[key]);
+                }
+                tempDicPositionField.Clear();
+            }
+        }
 
-		void _import_OnRspQryInstrument(InstrumentField pInstrument, bool pLast)
+        void _import_OnRspQryInstrument(InstrumentField pInstrument, bool pLast)
 		{
 			InstrumentField f = DicInstrumentField.GetOrAdd(pInstrument.InstrumentID, new InstrumentField());
 			foreach (var info in f.GetType().GetFields())
@@ -612,7 +623,8 @@ namespace Trade2015
 
 		public int ReqQryPosition()
 		{
-			return _proxy.ReqQryPosition();
+            tempDicPositionField.Clear();
+            return _proxy.ReqQryPosition();
 		}
 
 		public int ReqQryAccount()
