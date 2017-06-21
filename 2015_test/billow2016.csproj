@@ -95,6 +95,7 @@
     <Compile Include="Config.cs" />
     <Compile Include="CVSFileHelp.cs" />
     <Compile Include="FileUtil.cs" />
+    <Compile Include="HttpHelper.cs" />
     <Compile Include="InstrumentWatcher.cs" />
     <Compile Include="Log.cs" />
     <Compile Include="MongoDatabase.cs" />

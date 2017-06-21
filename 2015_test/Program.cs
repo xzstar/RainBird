@@ -89,7 +89,7 @@ namespace ConsoleProxy
 
         static Object lockFile = new Object();
         private static ConcurrentQueue<TradeItem> _tradeQueue = new ConcurrentQueue<TradeItem>();
-        public const bool isTest = false;
+        public const bool isTest = true;
         public const bool withoutDB = false;
         public const bool withoutRedis = true;
         public static string LogTitle = isTest?"[测试]":"[正式]";
@@ -337,12 +337,14 @@ namespace ConsoleProxy
                     {
                         Console.WriteLine(Program.LogTitle + "trade login failed");
                         Log.log(Program.LogTitle + "trade login failed");
+                        HttpHelper.HttpPostToWechat(trader.Investor + " trade login failed");
                     }
                     else
                     {
                         subscribeInstruments();
                         Console.WriteLine(Program.LogTitle + "trade login");
                         Log.log(Program.LogTitle + "trade login");
+                        HttpHelper.HttpPostToWechat(trader.Investor + " trade login");
                         break;
                     }
                 }
@@ -370,6 +372,8 @@ namespace ConsoleProxy
                 || (dt.Hour == 15 && dt.Minute == 0))
                 return false;
             else if ((instrument.StartsWith("rb") && dt.Hour == 23 && dt.Minute >= 0)
+                || (instrument.StartsWith("bu") && dt.Hour == 23 && dt.Minute >= 0)
+                || (instrument.StartsWith("ru") && dt.Hour == 23 && dt.Minute >= 0)
                 || (instrument.StartsWith("bu") && dt.Hour == 23 && dt.Minute >= 0)
                 || (instrument.StartsWith("ag") && dt.Hour == 2 && dt.Minute >= 30)
                 || (instrument.StartsWith("al") && dt.Hour == 1 && dt.Minute >= 0))
@@ -673,6 +677,7 @@ namespace ConsoleProxy
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnFrontConnected");
                 Log.log("OnFrontConnected");
+                HttpHelper.HttpPostToWechat(program.trader.Investor + " OnFrontConnected");
                 if (Utils.isTradingTimeNow() || Utils.isLogInTimeNow())
                     program.quoter.ReqUserLogin();
             };
@@ -838,8 +843,13 @@ namespace ConsoleProxy
                         currentInstrumentdata.isToday = true;
                         currentInstrumentdata.price = e.Tick.LastPrice;
                         needUpdate = true;
-                        Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3} 平仓:{4}", e.Tick.InstrumentID,
-                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos), e.Tick.InstrumentID);
+                        string info = string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3} 平仓:{4}", e.Tick.InstrumentID,
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos);
+                        Log.log(info, e.Tick.InstrumentID);
+
+                        info = string.Format("user:[{5}] -- {0} :{1} price:{2} break avg:{3} close:{4}", e.Tick.InstrumentID,
+                        e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos, program.trader.Investor);
+                        HttpHelper.HttpPostToWechat(info);
 
                     }
                     else if (e.Tick.LastPrice < currentInstrumentdata.curAvg && currentInstrumentdata.holder == 1)
@@ -858,8 +868,14 @@ namespace ConsoleProxy
                         currentInstrumentdata.isToday = true;
                         currentInstrumentdata.price = e.Tick.LastPrice;
                         needUpdate = true;
-                        Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3} 平仓:{4}", e.Tick.InstrumentID,
-                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos), e.Tick.InstrumentID);
+
+                        string info = string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3} 平仓:{4}", e.Tick.InstrumentID,
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos);
+                        Log.log(info, e.Tick.InstrumentID);
+
+                        info = string.Format("user:[{5}] -- {0} :{1} price:{2} break avg:{3} close:{4}", e.Tick.InstrumentID,
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos, program.trader.Investor);
+                        HttpHelper.HttpPostToWechat(info);
                     }
 
 
@@ -876,9 +892,13 @@ namespace ConsoleProxy
                             currentInstrumentdata.isToday = true;
                             currentInstrumentdata.price = e.Tick.LastPrice;
                             needUpdate = true;
-                            Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}+span:{4} 仓位:{5}", e.Tick.InstrumentID,
-                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn), e.Tick.InstrumentID);
+                            string info = string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}+span:{4} 仓位:{5}", e.Tick.InstrumentID,
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn);
+                            Log.log(info, e.Tick.InstrumentID);
 
+                            info = string.Format("user:[{6}] -- {0} :{1} price:{2} break avg:{3}+span:{4} open:{5}", e.Tick.InstrumentID,
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn, program.trader.Investor, program.trader.Investor);
+                            HttpHelper.HttpPostToWechat(info);
                         }
                         //else if (currentInstrumentdata.holder == -1)
                         //{
@@ -945,8 +965,12 @@ namespace ConsoleProxy
                             currentInstrumentdata.isToday = true;
                             currentInstrumentdata.price = e.Tick.LastPrice;
                             needUpdate = true;
-                            Log.log(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}-span:{4} 仓位:{5}", e.Tick.InstrumentID,
-                        e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn), e.Tick.InstrumentID);
+                            string info = string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}-span:{4} 仓位:{5}", e.Tick.InstrumentID,
+                        e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn);
+                            Log.log(info, e.Tick.InstrumentID);
+                            info = string.Format("user:[{6}] -- {0} :{1} price:{2} break avg:{3}-span:{4} open:{5}", e.Tick.InstrumentID,
+                        e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn, program.trader.Investor);
+                            HttpHelper.HttpPostToWechat(info);
                         }
                         //else if (currentInstrumentdata.holder == 1)
                         //{
@@ -1062,7 +1086,8 @@ namespace ConsoleProxy
             program.trader.OnRtnOrder += (sender, e) =>
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnOrder:{0}", e.Value.OrderID);
-                Log.log(string.Format("OnRtnOrder:{0} {1}", e.Value.OrderID, e.Value.LimitPrice), e.Value.InstrumentID);
+                string info = string.Format("OnRtnOrder:{0} {1}", e.Value.OrderID, e.Value.LimitPrice);
+                Log.log(info, e.Value.InstrumentID);
                 _orderId = e.Value.OrderID;
                 if (program.tradeCenter._tradeOrders.ContainsKey(_orderId))
                 {
@@ -1092,14 +1117,19 @@ namespace ConsoleProxy
                     Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnTrade:{0}", e.Value.TradeID);
                     Log.log(string.Format("OnRtnTrade:{0} OrderID {1}", e.Value.TradeID, e.Value.OrderID), e.Value.InstrumentID);
                     //成交 需要下委托单
-                    string direction = e.Value.Direction == DirectionType.Buy ? "买" : "卖";
-                    string offsetType = "开";
+                    string direction = e.Value.Direction == DirectionType.Buy ? "Buy" : "Sell";
+                    string offsetType = " Open";
                     if (e.Value.Offset == OffsetType.Close)
-                        offsetType = "平";
+                        offsetType = " Close";
                     else if (e.Value.Offset == OffsetType.CloseToday)
-                        offsetType = "平今";
-                    Log.logTrade(string.Format("{0},{1},{2},{3},{4},{5}", e.Value.InstrumentID, e.Value.TradingDay, e.Value.TradeTime,
-                        e.Value.Price, e.Value.Volume, direction + offsetType));
+                        offsetType = " CloseToday";
+
+                    string info = string.Format("user[{6}] -- {0},{1},{2},{3},{4},{5}", e.Value.InstrumentID, e.Value.TradingDay, e.Value.TradeTime,
+                        e.Value.Price, e.Value.Volume, direction + offsetType, program.trader.Investor);
+                    Log.logTrade(info);
+
+                    HttpHelper.HttpPostToWechat(info);
+
                     OrderField orderField = null;
                     if (program.tradeCenter._tradeOrders.TryGetValue(e.Value.OrderID, out orderField))
                     {
