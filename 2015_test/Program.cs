@@ -337,14 +337,14 @@ namespace ConsoleProxy
                     {
                         Console.WriteLine(Program.LogTitle + "trade login failed");
                         Log.log(Program.LogTitle + "trade login failed");
-                        HttpHelper.HttpPostToWechat(trader.Investor + " trade login failed");
+                        //HttpHelper.HttpPostToWechat(trader.Investor + " trade login failed");
                     }
                     else
                     {
                         subscribeInstruments();
                         Console.WriteLine(Program.LogTitle + "trade login");
                         Log.log(Program.LogTitle + "trade login");
-                        HttpHelper.HttpPostToWechat(trader.Investor + " trade login");
+                        //HttpHelper.HttpPostToWechat(trader.Investor + " trade login");
                         break;
                     }
                 }
@@ -376,7 +376,10 @@ namespace ConsoleProxy
                 || (instrument.StartsWith("ru") && dt.Hour == 23 && dt.Minute >= 0)
                 || (instrument.StartsWith("bu") && dt.Hour == 23 && dt.Minute >= 0)
                 || (instrument.StartsWith("ag") && dt.Hour == 2 && dt.Minute >= 30)
-                || (instrument.StartsWith("al") && dt.Hour == 1 && dt.Minute >= 0))
+                || (instrument.StartsWith("al") && dt.Hour == 1 && dt.Minute >= 0)
+                || (instrument.StartsWith("i") && dt.Hour == 23 && dt.Minute >= 30)
+                || (instrument.StartsWith("j") && dt.Hour == 23 && dt.Minute >= 30)
+                || (instrument.StartsWith("jm") && dt.Hour == 23 && dt.Minute >= 30))
                 return false;
             else if (dt.Minute % _MIN_INTERVAL == 0)
                 return true;
@@ -677,7 +680,7 @@ namespace ConsoleProxy
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnFrontConnected");
                 Log.log("OnFrontConnected");
-                HttpHelper.HttpPostToWechat(program.trader.Investor + " OnFrontConnected");
+                //HttpHelper.HttpPostToWechat(program.trader.Investor + " OnFrontConnected");
                 if (Utils.isTradingTimeNow() || Utils.isLogInTimeNow())
                     program.quoter.ReqUserLogin();
             };
@@ -849,7 +852,7 @@ namespace ConsoleProxy
 
                         info = string.Format("user:[{5}] -- {0} :{1} price:{2} break avg:{3} close:{4}", e.Tick.InstrumentID,
                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos, program.trader.Investor);
-                        HttpHelper.HttpPostToWechat(info);
+                        //HttpHelper.HttpPostToWechat(info);
 
                     }
                     else if (e.Tick.LastPrice < currentInstrumentdata.curAvg && currentInstrumentdata.holder == 1)
@@ -875,7 +878,7 @@ namespace ConsoleProxy
 
                         info = string.Format("user:[{5}] -- {0} :{1} price:{2} break avg:{3} close:{4}", e.Tick.InstrumentID,
                          e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos, program.trader.Investor);
-                        HttpHelper.HttpPostToWechat(info);
+                        //HttpHelper.HttpPostToWechat(info);
                     }
 
 
@@ -898,7 +901,7 @@ namespace ConsoleProxy
 
                             info = string.Format("user:[{6}] -- {0} :{1} price:{2} break avg:{3}+span:{4} open:{5}", e.Tick.InstrumentID,
                          e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn, program.trader.Investor, program.trader.Investor);
-                            HttpHelper.HttpPostToWechat(info);
+                            //HttpHelper.HttpPostToWechat(info);
                         }
                         //else if (currentInstrumentdata.holder == -1)
                         //{
@@ -970,7 +973,7 @@ namespace ConsoleProxy
                             Log.log(info, e.Tick.InstrumentID);
                             info = string.Format("user:[{6}] -- {0} :{1} price:{2} break avg:{3}-span:{4} open:{5}", e.Tick.InstrumentID,
                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn, program.trader.Investor);
-                            HttpHelper.HttpPostToWechat(info);
+                            //HttpHelper.HttpPostToWechat(info);
                         }
                         //else if (currentInstrumentdata.holder == 1)
                         //{
@@ -1128,7 +1131,7 @@ namespace ConsoleProxy
                         e.Value.Price, e.Value.Volume, direction + offsetType, program.trader.Investor);
                     Log.logTrade(info);
 
-                    HttpHelper.HttpPostToWechat(info);
+                    //HttpHelper.HttpPostToWechat(info);
 
                     OrderField orderField = null;
                     if (program.tradeCenter._tradeOrders.TryGetValue(e.Value.OrderID, out orderField))
