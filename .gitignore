@@ -12,3 +12,6 @@ Release/
 ipch/
 dll/
 dll_V1/
+*.db
+*.exe
+*.dll

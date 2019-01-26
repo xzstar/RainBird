@@ -41,7 +41,7 @@ namespace ConsoleProxy
         public bool trade;
         public int closevolumn;
         public int openvolumn;
-        public int span;
+        public double span;
 
     }
 
@@ -488,7 +488,7 @@ namespace ConsoleProxy
                 instrumentData.isToday = false;
                 instrumentData.lastUpdateTime = "";
                 instrumentData.price = 0;
-                instrumentData.span = 15;
+                instrumentData.span = 0.02;
                 instrumentData.trade = true;
                 instrumentData.openvolumn = 1;
                 instrumentData.closevolumn = 1;
@@ -882,7 +882,7 @@ namespace ConsoleProxy
                     }
 
 
-                    if (e.Tick.LastPrice > currentInstrumentdata.curAvg + instrumentData.span)
+                    if (e.Tick.LastPrice > currentInstrumentdata.curAvg + e.Tick.LastPrice * instrumentData.span)
                     {
                         //Console.WriteLine("品种{0} 时间:{1} 触发新高:{2}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice);
                         //no trade before
@@ -896,11 +896,11 @@ namespace ConsoleProxy
                             currentInstrumentdata.price = e.Tick.LastPrice;
                             needUpdate = true;
                             string info = string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}+span:{4} 仓位:{5}", e.Tick.InstrumentID,
-                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn);
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, e.Tick.LastPrice * instrumentData.span, instrumentData.openvolumn);
                             Log.log(info, e.Tick.InstrumentID);
 
                             info = string.Format("user:[{6}] -- {0} :{1} price:{2} break avg:{3}+span:{4} open:{5}", e.Tick.InstrumentID,
-                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn, program.trader.Investor, program.trader.Investor);
+                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, e.Tick.LastPrice * instrumentData.span, instrumentData.openvolumn, program.trader.Investor, program.trader.Investor);
                             //HttpHelper.HttpPostToWechat(info);
                         }
                         //else if (currentInstrumentdata.holder == -1)
@@ -954,7 +954,7 @@ namespace ConsoleProxy
                         //}
                     }
 
-                    else if (e.Tick.LastPrice < currentInstrumentdata.curAvg - instrumentData.span)
+                    else if (e.Tick.LastPrice < currentInstrumentdata.curAvg - e.Tick.LastPrice * instrumentData.span)
                     {
                         //Console.WriteLine("品种{0} 时间:{1} 触发新低:{2}", e.Tick.InstrumentID, e.Tick.UpdateTime, e.Tick.LastPrice);
 
@@ -969,10 +969,10 @@ namespace ConsoleProxy
                             currentInstrumentdata.price = e.Tick.LastPrice;
                             needUpdate = true;
                             string info = string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2} 突破 平均:{3}-span:{4} 仓位:{5}", e.Tick.InstrumentID,
-                        e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn);
+                        e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, e.Tick.LastPrice * instrumentData.span, instrumentData.openvolumn);
                             Log.log(info, e.Tick.InstrumentID);
                             info = string.Format("user:[{6}] -- {0} :{1} price:{2} break avg:{3}-span:{4} open:{5}", e.Tick.InstrumentID,
-                        e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, instrumentData.span, instrumentData.openvolumn, program.trader.Investor);
+                        e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, e.Tick.LastPrice * instrumentData.span, instrumentData.openvolumn, program.trader.Investor);
                             //HttpHelper.HttpPostToWechat(info);
                         }
                         //else if (currentInstrumentdata.holder == 1)
