@@ -1,54 +1,54 @@
-﻿//using System;
-//using System.Collections.Generic;
-//using System.IO;
-//using System.Linq;
-//using System.Text;
-//using System.Threading.Tasks;
-//using Newtonsoft.Json;
-//using Trade2015;
-//using Quote2015;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Trade2015;
+using Quote2015;
 
-//namespace ConsoleProxy
-//{
-//    public interface IStrategy
-//    {
-//        /// <summary>
-//        /// 策略名
-//        /// </summary>
-//        string getStrategyName();
-//        /// <summary>
-//		/// 初始化数据
-//		/// </summary>
-//        void onInit();
+namespace ConsoleProxy
+{
+    public interface IStrategy
+    {
+        /// <summary>
+        /// 策略名
+        /// </summary>
+        string getStrategyName();
+        /// <summary>
+		/// 初始化数据
+		/// </summary>
+        void onInit();
 
-//        /// <summary>
-//		/// 策略开始
-//		/// </summary>
-//        void onStart();
+        /// <summary>
+		/// 策略开始
+		/// </summary>
+        void onStart();
 
-//        /// <summary>
-//		/// 策略结束
-//		/// </summary>
-//        void onEnd();
+        /// <summary>
+		/// 策略结束
+		/// </summary>
+        void onEnd();
 
-//        /// <summary>
-//		/// Tick数据
-//		/// </summary>
-//        void onTick(TickEventArgs e);
+        /// <summary>
+		/// Tick数据
+		/// </summary>
+        void onTick(TickEventArgs e);
 
-//        /// <summary>
-//		/// Trade数据
-//		/// </summary>
-//        void onTrade(TradeArgs tradeArgs);
+        /// <summary>
+		/// Trade数据
+		/// </summary>
+        void onTrade(TradeArgs tradeArgs);
 
-//        /// <summary>
-//		/// Order数据
-//		/// </summary>
-//        void onOrder(OrderField order);
+        /// <summary>
+		/// Order数据
+		/// </summary>
+        void onOrder(OrderField order);
 
 
-//        void onOrderCancel(OrderField order);
-//    }
+        void onOrderCancel(OrderField order);
+    }
 
 //    public class StrategyManager
 //    {
@@ -143,7 +143,7 @@
 //        protected Dictionary<string, InstrumentTradeConfig> mTradeInstumentMap;
 //        protected ITradeCenter mTradeCenter;
 
-       
+
 
 //        public void setTradeCenter(ITradeCenter tradeCenter)
 //        {
@@ -204,7 +204,7 @@
 //            catch (Exception e)
 //            {
 //                mTradeInstrumentList = new List<InstrumentTradeConfig>();
-                
+
 //            }
 
 
@@ -630,7 +630,7 @@
 //            //        File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
 //            //    }
 //            //}
-        
+
 //        }
 
 //        public void onTrade(TradeArgs e)
@@ -645,7 +645,7 @@
 //            //{
 //            //    return;
 //            //}
-            
+
 
 //            //if (e.Value.Direction == DirectionType.Buy)
 //            //{
@@ -700,7 +700,7 @@
 //            {
 //                return;
 //            }
-            
+
 //        }
 //    }
-//}
+}

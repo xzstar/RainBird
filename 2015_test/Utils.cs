@@ -8,7 +8,10 @@ using Trade2015;
 namespace ConsoleProxy
 {
     public class Utils
+
     {
+        private static int _MIN_INTERVAL = 15;
+
         public static bool isBeforeTradingTime(ExchangeStatusType type, DateTime dt)
         {
             if (dt.Hour == 8 && dt.Minute == 59)
@@ -119,6 +122,56 @@ namespace ConsoleProxy
             if (hour == 15 && min > 0 && min <= 30)
                 return true;
 
+            return false;
+        }
+
+        public static bool isOpenMin(DateTime dt)
+        {
+            if ((dt.Hour == 9 && dt.Minute == 0)
+                || (dt.Hour == 10 && dt.Minute == 30)
+                || (dt.Hour == 13 && dt.Minute == 30)
+                || (dt.Hour == 21 && dt.Minute == 0))
+                return true;
+            else
+                return false;
+        }
+
+        public static bool isStartMin(DateTime dt, string instrument)
+        {
+            if ((dt.Hour == 10 && dt.Minute == 15)
+                || (dt.Hour == 11 && dt.Minute == 30)
+                || (dt.Hour == 15 && dt.Minute == 0))
+                return false;
+            else if ((instrument.StartsWith("rb") && dt.Hour == 23 && dt.Minute >= 0)
+                || (instrument.StartsWith("bu") && dt.Hour == 23 && dt.Minute >= 0)
+                || (instrument.StartsWith("ru") && dt.Hour == 23 && dt.Minute >= 0)
+                || (instrument.StartsWith("bu") && dt.Hour == 23 && dt.Minute >= 0)
+                || (instrument.StartsWith("ag") && dt.Hour == 2 && dt.Minute >= 30)
+                || (instrument.StartsWith("al") && dt.Hour == 1 && dt.Minute >= 0)
+                || (instrument.StartsWith("i") && dt.Hour == 23 && dt.Minute >= 30)
+                || (instrument.StartsWith("j") && dt.Hour == 23 && dt.Minute >= 30)
+                || (instrument.StartsWith("jm") && dt.Hour == 23 && dt.Minute >= 30))
+                return false;
+            else if (dt.Minute % _MIN_INTERVAL == 0)
+                return true;
+            else
+                return false;
+        }
+
+        //Todo lastMin 加上日期时间，避免涨跌停无数据，需要判断时差超过15分钟也要新bar
+        public static bool isNewBar(string lastUpdateTime, DateTime dt, string instrument)
+        {
+            if (lastUpdateTime == null || lastUpdateTime == "")
+                return true;
+            DateTime lastUpdateDT = DateTime.Parse(lastUpdateTime);
+            if (lastUpdateTime == null || ((lastUpdateDT.Hour != dt.Hour || lastUpdateDT.Minute != dt.Minute) && isOpenMin(dt)))
+                return true;
+
+
+            TimeSpan span = dt - lastUpdateDT;
+
+            if (((lastUpdateDT.Hour != dt.Hour || lastUpdateDT.Minute != dt.Minute) && isStartMin(dt, instrument)) || span.TotalMinutes > _MIN_INTERVAL)
+                return true;
             return false;
         }
     }

@@ -94,10 +94,14 @@
   <ItemGroup>
     <Compile Include="Config.cs" />
     <Compile Include="CVSFileHelp.cs" />
+    <Compile Include="DataService.cs" />
     <Compile Include="FileUtil.cs" />
+    <Compile Include="HeartBeatService.cs" />
     <Compile Include="HttpHelper.cs" />
     <Compile Include="InstrumentWatcher.cs" />
+    <Compile Include="ITrader.cs" />
     <Compile Include="Log.cs" />
+    <Compile Include="MetaData.cs" />
     <Compile Include="MongoDatabase.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

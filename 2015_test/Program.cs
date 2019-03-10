@@ -9,107 +9,38 @@ using System.Collections.Concurrent;
 using Newtonsoft.Json;
 using System.Text;
 using System.Threading.Tasks;
-using MongoDB.Bson;
-using MongoDB.Driver;
 using System.Globalization;
 using StackExchange.Redis;
 
 
 namespace ConsoleProxy
 {
-    [Serializable]
-    public class UnitData
-    {
-        public ObjectId Id { get; set; }
-        public string datetime { get; set; }
-        public double high { get; set; }
-        public double low { get; set; }
-        public double open { get; set; }
-        public double close { get; set; }
-        public double avg_480 { get; set; }
-    }
-
    
-    [Serializable]
-    public class InstrumentData
-    {
-        public string lastUpdateTime = null;
-        public int holder = 0;
-        public bool isToday = true;
-        public double price = -1;
-        public double curAvg = 0;
-        public bool trade;
-        public int closevolumn;
-        public int openvolumn;
-        public double span;
-
-    }
-
-    class Deal
-    {
-        public string user;
-        public string instrument;
-        public string direction;
-        public string holders;
-        public string price;
-        public string time;
-
-    }
-
-    class TimeBarInfo
-    {
-        public string user;
-        public string instrument;
-        public string price;
-        public string time;
-    }
-
-    class HeartBeat
-    {
-        public string user;
-        public long timestamp;
-    }
 
 
     class Program
     {
         static private string _inst;
-        private static int _TOTALSIZE = 480 ;
-        private static int _MIN_INTERVAL = 15;
         private static double _LastPrice = double.NaN;
 
         private static int _orderId;
 
         Trade trader;
         Quote quoter;
+        HeartBeatService heartBeatService;
+
         TradeCenter tradeCenter;
-        string REDIS_HOST = "127.0.0.1";
-        ConnectionMultiplexer redis;
-        ISubscriber redisSubscriber;
 
         static Object lockFile = new Object();
         private static ConcurrentQueue<TradeItem> _tradeQueue = new ConcurrentQueue<TradeItem>();
         public const bool isTest = true;
         public const bool withoutDB = false;
-        public const bool withoutRedis = true;
+        //public const bool withoutRedis = true;
         public static string LogTitle = isTest?"[测试]":"[正式]";
 
         private Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
         private Dictionary<string, HashSet<string>> _waitingForOp = new Dictionary<string, HashSet<string>>();
         private Dictionary<string, List<UnitData>> unitDataMap = new Dictionary<string, List<UnitData>>();
-
-        /// <summary>
-        /// 数据库连接
-        /// </summary>
-        private const string connectionString = "mongodb://127.0.0.1:27017";
-        /// <summary>
-        /// 指定的数据库
-        /// </summary>
-        private const string dbName = "data_15min";
-        
-        static String instrument_15m = "_15m";
-
-        private MongoDatabase mongoDB;
 
         private bool isInit = false;
 
@@ -354,112 +285,9 @@ namespace ConsoleProxy
         }
 
 
-        private bool isOpenMin(DateTime dt)
-        {
-            if ((dt.Hour == 9 && dt.Minute == 0)
-                || (dt.Hour == 10 && dt.Minute == 30)
-                || (dt.Hour == 13 && dt.Minute == 30)
-                || (dt.Hour == 21 && dt.Minute == 0))
-                return true;
-            else
-                return false;
-        }
+        
 
-        private bool isStartMin(DateTime dt, string instrument)
-        {
-            if ((dt.Hour == 10 && dt.Minute == 15)
-                || (dt.Hour == 11 && dt.Minute == 30)
-                || (dt.Hour == 15 && dt.Minute == 0))
-                return false;
-            else if ((instrument.StartsWith("rb") && dt.Hour == 23 && dt.Minute >= 0)
-                || (instrument.StartsWith("bu") && dt.Hour == 23 && dt.Minute >= 0)
-                || (instrument.StartsWith("ru") && dt.Hour == 23 && dt.Minute >= 0)
-                || (instrument.StartsWith("bu") && dt.Hour == 23 && dt.Minute >= 0)
-                || (instrument.StartsWith("ag") && dt.Hour == 2 && dt.Minute >= 30)
-                || (instrument.StartsWith("al") && dt.Hour == 1 && dt.Minute >= 0)
-                || (instrument.StartsWith("i") && dt.Hour == 23 && dt.Minute >= 30)
-                || (instrument.StartsWith("j") && dt.Hour == 23 && dt.Minute >= 30)
-                || (instrument.StartsWith("jm") && dt.Hour == 23 && dt.Minute >= 30))
-                return false;
-            else if (dt.Minute % _MIN_INTERVAL == 0)
-                return true;
-            else
-                return false;
-        }
-
-        //Todo lastMin 加上日期时间，避免涨跌停无数据，需要判断时差超过15分钟也要新bar
-        private bool isNewBar(string lastUpdateTime, DateTime dt, string instrument)
-        {
-            if (lastUpdateTime == null || lastUpdateTime == "")
-                return true;
-            DateTime lastUpdateDT = DateTime.Parse(lastUpdateTime);
-            if (lastUpdateTime == null || ((lastUpdateDT.Hour != dt.Hour || lastUpdateDT.Minute != dt.Minute) && isOpenMin(dt)))
-                return true;
-
-
-            TimeSpan span = dt - lastUpdateDT;
-
-            if (((lastUpdateDT.Hour != dt.Hour || lastUpdateDT.Minute != dt.Minute) && isStartMin(dt, instrument)) || span.TotalMinutes > _MIN_INTERVAL)
-                return true;
-            return false;
-        }
-
-        private void initUnitDataMap(string instrument)
-        {
-            List<UnitData> unitDataList = MongoDbHepler.GetAll<UnitData>(mongoDB, instrument + instrument_15m);
-            unitDataMap.Add(instrument, unitDataList);
-            int count = unitDataList.Count;
-            if (count > _TOTALSIZE)
-            {
-                UnitData lastUnitData = unitDataList.Last();
-                if (lastUnitData.avg_480 <= 0)
-                {
-                    if (count > _TOTALSIZE)
-                    {
-                        double total = 0;
-                        for (int i = 0; i < _TOTALSIZE; i++)
-                        {
-                            total += unitDataList.ElementAt(count - i -1).close;
-                        }
-                        lastUnitData.avg_480 = Math.Round(total / _TOTALSIZE, 2);
-                    }
-                }
-                Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 个数{1} 平均:{2}", instrument, count, lastUnitData.avg_480));
-            }
-        }
-
-        public static long GetTimeStamp()
-        {
-            TimeSpan ts = DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, 0);
-            return Convert.ToInt64(ts.TotalSeconds);
-        }
-        private void startHeartBeat()
-        {
-            Task.Factory.StartNew(() =>
-            {
-                while (true)
-                {
-                    if (withoutRedis == false && redisSubscriber != null)
-                    {
-                        HeartBeat heartBeat = new HeartBeat();
-                        heartBeat.user = trader.Investor;
-                        heartBeat.timestamp = GetTimeStamp();
-                        try
-                        {
-                            redisSubscriber.Publish("heartbeat", JsonConvert.SerializeObject(heartBeat));
-                            Thread.Sleep(30000);
-
-                        }
-                        catch (Exception err)
-                        {
-                            Log.log(string.Format("heartbeat publish err {0} ", err.Message));
-                            return;
-                        }
-
-                    }
-                }
-            });
-        }
+        
 
         private void syncData()
         {
@@ -528,16 +356,10 @@ namespace ConsoleProxy
                 }
             }
 
-            if (!withoutDB)
-            {
-                unitDataMap.Clear();
-                mongoDB = MongoDbHepler.GetDatabase(connectionString, dbName);
+            unitDataMap.Clear();
+            DataService dataService = new DataService(!withoutDB);
+            dataService.initUnitDataMap(unitDataMap, tradeData.Keys);
 
-                foreach (string key in tradeData.Keys)
-                {
-                    initUnitDataMap(key);
-                }
-            }
             if (trader.IsLogin)
                 subscribeInstruments();
         }
@@ -546,122 +368,42 @@ namespace ConsoleProxy
         {
             Program program = new Program();
             System.Object lockThis = new System.Object();
-            //bool isInit = true;
 
-            R:
+        //bool isInit = true;
             Console.WriteLine(Program.LogTitle + "选择接口:\t1-CTP  2-xSpeed  3-Femas  4-股指仿真  5-外汇仿真  6-郑商商品期权仿真");
-            char c = '1';
-
-            switch (c)
+            if (isTest)
             {
-                case '1': //CTP
-                    if (isTest)
-                    {
-                        program.trader = new Trade("ctp_trade_proxy.dll")
-                        {
-                            Server = "tcp://180.168.146.187:10000",
-                            Broker = "9999"// "4040",
-                        };
-                        program.quoter = new Quote("ctp_quote_proxy.dll")
-                        {
-                            Server = "tcp://180.168.146.187:10010",
-                            Broker = "9999",
-                        };
+                program.trader = new Trade("ctp_trade_proxy.dll")
+                {
+                    Server = "tcp://180.168.146.187:10000",
+                    Broker = "9999"// "4040",
+                };
+                program.quoter = new Quote("ctp_quote_proxy.dll")
+                {
+                    Server = "tcp://180.168.146.187:10010",
+                    Broker = "9999",
+                };
 
-                    }
-                    else {
-                        program.trader = new Trade("ctp_trade_proxy.dll")
-                        {
-                            Server = "tcp://180.166.37.129:41205", //国信
-                            Broker = "8030"
-
-                            //Server = "tcp://222.73.111.150:41205",//" tcp://101.95.8.178:51205",//中建 
-                            //Broker = "9080"// "9999"// "4040",
-                        };
-                        program.quoter = new Quote("ctp_quote_proxy.dll")
-                        {
-                            Server = "tcp://180.166.37.129:41213",//国信
-                            Broker = "8030",
-                            //Server = "tcp://222.73.111.150:41213",//"tcp://101.95.8.178:51213",//中建 
-                            //Broker = "9080",
-                        };
-                    }
-                    break;
-                case '2': //xSpeed
-                    program.trader = new Trade("xSpeed_trade_proxy.dll")
-                    {
-                        Server = "tcp://203.187.171.250:10910",
-                        Broker = "0001",
-                    };
-                    program.quoter = new Quote("xSpeed_quote_proxy.dll")
-                    {
-                        Server = "tcp://203.187.171.250:10915",
-                        Broker = "0001",
-                    };
-                    break;
-                case '3': //femas
-                    program.trader = new Trade("femas_trade_proxy.dll")
-                    {
-                        Server = "tcp://116.228.53.149:6666",
-                        Broker = "0001",
-                    };
-                    program.quoter = new Quote("femas_quote_proxy.dll")
-                    {
-                        Server = "tcp://116.228.53.149:6888",
-                        Broker = "0001",
-                    };
-                    break;
-                case '4': //CTP
-                    program.trader = new Trade("ctp_trade_proxy.dll")
-                    {
-                        Server = "tcp://124.207.185.88:41205",
-                        Broker = "1010",
-                    };
-                    program.quoter = new Quote("ctp_quote_proxy.dll")
-                    {
-                        Server = "tcp://124.207.185.88:41213",
-                        Broker = "1010",
-                    };
-                    break;
-                case '5': //CTP
-                    program.trader = new Trade("femas_trade_proxy.dll")
-                    {
-                        Server = "tcp://117.184.207.111:7036",
-                        Broker = "2713",
-                    };
-                    program.quoter = new Quote("femas_quote_proxy.dll")
-                    {
-                        Server = "tcp://117.184.207.111:7230",
-                        Broker = "2713",
-                    };
-                    break;
-                case '6': //CTP
-                    program.trader = new Trade("ctp_trade_proxy.dll")
-                    {
-                        Server = "tcp://106.39.36.72:51205",
-                        Broker = "1010",
-                    };
-                    program.quoter = new Quote("ctp_quote_proxy.dll")
-                    {
-                        Server = "tcp://106.39.36.72:51213",
-                        Broker = "1010",
-                    };
-                    break;
-                default:
-                    Console.WriteLine(Program.LogTitle + "请重新选择");
-                    goto R;
             }
+            else
+            {
+                program.trader = new Trade("ctp_trade_proxy.dll")
+                {
+                    Server = "tcp://180.166.37.129:41205", //国信
+                    Broker = "8030"
 
-            //if (isTest)
-            //{
-            //    ITradeCenter tradeCenter = new TradeCenterTestImp();
-
-            //    //tradeCenter.init("m1609");
-            //    tradeCenter.init("rb1610");
-            //    tradeCenter.start();
-            //    goto End;
-            //}
-
+                    //Server = "tcp://222.73.111.150:41205",//" tcp://101.95.8.178:51205",//中建 
+                    //Broker = "9080"// "9999"// "4040",
+                };
+                program.quoter = new Quote("ctp_quote_proxy.dll")
+                {
+                    Server = "tcp://180.166.37.129:41213",//国信
+                    Broker = "8030",
+                    //Server = "tcp://222.73.111.150:41213",//"tcp://101.95.8.178:51213",//中建 
+                    //Broker = "9080",
+                };
+            }
+            
             Config config = Config.loadConfig();
             if (config == null)
             {
@@ -734,38 +476,30 @@ namespace ConsoleProxy
                     //Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 时间:{1} 当前价格:{2}", e.Tick.InstrumentID,
                     //       e.Tick.UpdateTime, e.Tick.LastPrice));
 
-                    if (program.isNewBar(currentInstrumentdata.lastUpdateTime, d1, e.Tick.InstrumentID))
+                    if (Utils.isNewBar(currentInstrumentdata.lastUpdateTime, d1, e.Tick.InstrumentID))
                     {
                         int count = unitDataList.Count;
                         if (count > 0)
                         {
                             UnitData lastUnitData = unitDataList.Last();
 
-                            if (count > _TOTALSIZE)
+                            if (count > DataService.TOTALSIZE)
                             {
                                 double total = 0;
-                                for (int i = 0; i < _TOTALSIZE; i++)
+                                for (int i = 0; i < DataService.TOTALSIZE; i++)
                                 {
                                     total += unitDataList.ElementAt(count - i - 1).close;
                                 }
-                                lastUnitData.avg_480 = Math.Round(total / _TOTALSIZE, 2);
+                                lastUnitData.avg_480 = Math.Round(total / DataService.TOTALSIZE, 2);
 
-                                if (withoutRedis == false && program.redisSubscriber != null)
+                                if (program.heartBeatService.isAvailable())
                                 {
                                     TimeBarInfo timeBarInfo = new TimeBarInfo();
                                     timeBarInfo.user = program.trader.Investor;
                                     timeBarInfo.instrument = e.Tick.InstrumentID;
                                     timeBarInfo.price = Convert.ToString(lastUnitData.avg_480);
                                     timeBarInfo.time = program.quoter.TradingDay + " " + e.Tick.UpdateTime;
-                                    try
-                                    {
-                                        program.redisSubscriber.Publish("timebarinfo", JsonConvert.SerializeObject(timeBarInfo));
-
-                                    }
-                                    catch (Exception err)
-                                    {
-                                        Log.log(string.Format("timebarinfo publish err {0} ", err.Message));
-                                    }
+                                    program.heartBeatService.publishInfo("timebarinfo", JsonConvert.SerializeObject(timeBarInfo));
                                 }
 
                             }
@@ -903,55 +637,7 @@ namespace ConsoleProxy
                          e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, e.Tick.LastPrice * instrumentData.span, instrumentData.openvolumn, program.trader.Investor, program.trader.Investor);
                             //HttpHelper.HttpPostToWechat(info);
                         }
-                        //else if (currentInstrumentdata.holder == -1)
-                        //{
-                        //    if (instrumentData.trade)
-                        //        operatorInstrument(TradeCenter.BUY_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentData.openvolumn);
-
-                        //    //close sell and open buy
-                        //    if (currentInstrumentdata.isToday)
-                        //    {
-                        //        //operatord(trader, quoter, BUY_CLOSETODAY, e.Tick.InstrumentID);
-                        //        if (instrumentData.trade)
-                        //        {
-                        //            PositionField posField;
-                        //            if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
-                        //            {
-                        //                int pos = posField.TdPosition;
-                        //                operatorInstrument(TradeCenter.BUY_CLOSETODAY, e.Tick.InstrumentID, 0, pos);
-                        //            }
-                        //            else
-                        //            {
-                        //                //避免本地没有同步到数据
-                        //                operatorInstrument(TradeCenter.BUY_CLOSETODAY, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
-                        //            }
-                        //        }
-
-                        //    }
-                        //    else
-                        //    {
-                        //        //operatord(trader, quoter, BUY_CLOSE, e.Tick.InstrumentID);
-                        //        if (instrumentData.trade)
-                        //        {
-                        //            PositionField posField;
-                        //            if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
-                        //            {
-                        //                int pos = posField.YdPosition;
-                        //                operatorInstrument(TradeCenter.BUY_CLOSE, e.Tick.InstrumentID, 0, pos);
-                        //            }
-                        //            else {
-                        //                //避免本地没有同步到数据
-                        //                operatorInstrument(TradeCenter.BUY_CLOSE, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
-                        //            }
-                        //        }
-
-                        //    }
-                        //    //operatord(trader, quoter, BUY_OPEN, e.Tick.InstrumentID);
-                        //    currentInstrumentdata.holder = 1;
-                        //    currentInstrumentdata.isToday = true;
-                        //    currentInstrumentdata.price = e.Tick.LastPrice;
-                        //    needUpdate = true;
-                        //}
+                       
                     }
 
                     else if (e.Tick.LastPrice < currentInstrumentdata.curAvg - e.Tick.LastPrice * instrumentData.span)
@@ -975,56 +661,7 @@ namespace ConsoleProxy
                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, e.Tick.LastPrice * instrumentData.span, instrumentData.openvolumn, program.trader.Investor);
                             //HttpHelper.HttpPostToWechat(info);
                         }
-                        //else if (currentInstrumentdata.holder == 1)
-                        //{
-                        //    if (instrumentData.trade)
-                        //        operatorInstrument(TradeCenter.SELL_OPEN, e.Tick.InstrumentID, e.Tick.LastPrice, instrumentData.openvolumn);
-
-                        //    //close buy and open sell
-                        //    if (currentInstrumentdata.isToday)
-                        //    {
-                        //        //operatord(trader, quoter, SELL_CLOSETODAY, e.Tick.InstrumentID);
-                        //        if (instrumentData.trade)
-                        //        {
-                        //            PositionField posField;
-                        //            if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
-                        //            {
-                        //                int pos = posField.TdPosition;
-                        //                operatorInstrument(TradeCenter.SELL_CLOSETODAY, e.Tick.InstrumentID, 0, pos);
-
-                        //            }
-                        //            else
-                        //            {
-                        //                //避免本地没有同步到数据
-                        //                operatorInstrument(TradeCenter.SELL_CLOSETODAY, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
-                        //            }
-                        //        }
-
-                        //    }
-                        //    else
-                        //    {
-                        //        //operatord(trader, quoter, SELL_CLOSE, e.Tick.InstrumentID);
-                        //        if (instrumentData.trade)
-                        //        {
-                        //            PositionField posField;
-                        //            if (program.trader.DicPositionField.TryGetValue(e.Tick.InstrumentID, out posField))
-                        //            {
-                        //                int pos = posField.YdPosition;
-                        //                operatorInstrument(TradeCenter.SELL_CLOSE, e.Tick.InstrumentID, 0, pos);
-                        //            }
-                        //            else
-                        //            {
-                        //                //避免本地没有同步到数据
-                        //                operatorInstrument(TradeCenter.SELL_CLOSE, e.Tick.InstrumentID, 0, instrumentData.closevolumn);
-                        //            }
-                        //        }
-                        //    }
-                        //    //operatord(trader, quoter, SELL_OPEN, e.Tick.InstrumentID);
-                        //    currentInstrumentdata.holder = -1;
-                        //    currentInstrumentdata.isToday = true;
-                        //    currentInstrumentdata.price = e.Tick.LastPrice;
-                        //    needUpdate = true;
-                        //}
+                        
                     }
 
                     if (needUpdate)
@@ -1145,7 +782,8 @@ namespace ConsoleProxy
                     }
                     program.trader.ReqQryPosition();
 
-                    if (withoutRedis == false && program.redisSubscriber != null)
+                    //if (withoutRedis == false && program.redisSubscriber != null)
+                    if(program.heartBeatService.isAvailable())
                     {
                         Deal deal = new Deal();
                         deal.user = program.trader.Investor;
@@ -1154,13 +792,7 @@ namespace ConsoleProxy
                         deal.time = e.Value.TradingDay + " " + e.Value.TradeTime;
                         deal.direction = direction + offsetType;
                         deal.holders = Convert.ToString(e.Value.Volume);
-                        try {
-                            program.redisSubscriber.Publish("deal", JsonConvert.SerializeObject(deal));
-                        }
-                        catch (Exception err)
-                        {
-                            Log.log(string.Format("deal publish err {0} ", err.Message));
-                        }
+                        program.heartBeatService.publishInfo("deal", JsonConvert.SerializeObject(deal));
                     }
                 }
             };
@@ -1181,106 +813,18 @@ namespace ConsoleProxy
             LoginWatcher.Init(program);
             Console.WriteLine(program.trader.DicInstrumentField.Aggregate("\r\n合约", (cur, n) => cur + "\t" + n.Value.InstrumentID));
 
-            //string fileName = FileUtil.getTradeFilePath();
-            //Dictionary<string, InstrumentData> tempData = null;
-            //try
-            //{
-            //    string text = File.ReadAllText(fileName);
-            //    tempData = JsonConvert.DeserializeObject<Dictionary<string, InstrumentData>>(text);
-            //}
-            //catch (Exception e)
-            //{
-
-            //}
-
-            //if (tempData != null && tempData.Count != 0)
-            //    program.tradeData = tempData;
-            //else
-            //{
-            //    string inst = string.Empty;
-            //    Console.WriteLine(Program.LogTitle + "请输入合约:");
-            //    inst = Console.ReadLine();
-            //    //program.quoter.ReqSubscribeMarketData(inst);
-            //    InstrumentData instrumentData = new InstrumentData();
-            //    instrumentData.holder = 0;
-            //    instrumentData.isToday = false;
-            //    instrumentData.lastUpdateTime = "";
-            //    instrumentData.price = 0;
-            //    instrumentData.span = 15;
-            //    instrumentData.trade = true;
-            //    instrumentData.openvolumn = 1;
-            //    instrumentData.closevolumn = 1;
-            //    instrumentData.curAvg = 0;
-            //    program.tradeData = new Dictionary<string, InstrumentData>();
-            //    program.tradeData.Add(inst, instrumentData);
-
-            //}
-
-            //foreach (PositionField data in program.trader.DicPositionField.Values)
-            //{
-            //    InstrumentData instrumentData;
-            //    bool found = program.tradeData.TryGetValue(data.InstrumentID, out instrumentData);
-            //    if (found)
-            //    {
-            //        if (data.Position > 0)
-            //        {
-            //            if (data.Direction == DirectionType.Buy)
-            //                instrumentData.holder = 1;
-            //            else
-            //                instrumentData.holder = -1;
-
-            //            if (data.TdPosition > 0)
-            //            {
-            //                instrumentData.isToday = true;
-            //            }
-            //            else if (data.YdPosition > 0)
-            //            {
-            //                instrumentData.isToday = false;
-            //            }
-
-            //        }
-            //        else
-            //        {
-            //            instrumentData.holder = 0;
-            //        }
-            //    }
-            //}
-
-            //if (!withoutDB) { 
-            //    program.mongoDB = MongoDbHepler.GetDatabase(connectionString, dbName);
-
-            //    foreach (string key in program.tradeData.Keys)
-            //    {
-            //        program.initUnitDataMap(key);
-            //    }
-            //}
-            //if (program.trader.IsLogin)
-            //    program.subscribeInstruments();
             program.syncData();
             program.isInit = true;
+            program.heartBeatService = new HeartBeatService(program.trader.Investor,false);
+            program.heartBeatService.startService();
 
-            if (withoutRedis == false)
-            {
-                try
-                {
-                    //取连接对象
-                    program.redis = ConnectionMultiplexer.Connect(program.REDIS_HOST);
-                    //取得订阅对象
-                    program.redisSubscriber = program.redis.GetSubscriber();
-                    program.startHeartBeat();
-                }
-                catch (Exception e)
-                {
-
-                }
-            }
             Inst:
             Console.WriteLine(Program.LogTitle + "q:退出  1-BK  2-SP  3-SK  4-BP  5-撤单");
             Console.WriteLine("a-交易所状态  b-委托  c-成交  d-持仓  e-合约  f-权益 g-换合约 h-平所有仓位 s-立刻保存 t-当前值");
 
             DirectionType dire = DirectionType.Buy;
             OffsetType offset = OffsetType.Open;
-            c = Console.ReadKey().KeyChar;
+            char c = Console.ReadKey().KeyChar;
             switch (c)
             {   
                 case '1':
@@ -1372,26 +916,7 @@ namespace ConsoleProxy
                         program.quoter.ReqUserLogout();
                         program.trader.ReqUserLogout();
                     }
-                    //foreach (string key in program.unitDataMap.Keys)
-                    //{
-                    //    LinkedList<UnitData> unitDataList;
-                    //    if (program.unitDataMap.TryGetValue(key, out unitDataList))
-                    //    {
-                    //        if (unitDataList == null)
-                    //            continue;
-                    //        Log.log(string.Format("Quit:saving {0} ", key));
-                            
-                    //        Task.Factory.StartNew(() =>
-                    //        {
-                    //            lock(lockFile)
-                    //            {
-                    //                string fileNameSerialize = FileUtil.getUnitDataPath(key);
-                    //                string jsonString = JsonConvert.SerializeObject(unitDataList);
-                    //                File.WriteAllText(fileNameSerialize, jsonString, Encoding.UTF8);
-                    //            }
-                    //        });
-                    //    }
-                    //}
+                    
                     program.tradeCenter.stop();
                     program.tradeCenter = null;
                     InstrumentWatcher.flag = false;
