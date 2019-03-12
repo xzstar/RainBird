@@ -101,6 +101,7 @@
     <Compile Include="InstrumentWatcher.cs" />
     <Compile Include="ITrader.cs" />
     <Compile Include="Log.cs" />
+    <Compile Include="MailService.cs" />
     <Compile Include="MetaData.cs" />
     <Compile Include="MongoDatabase.cs" />
     <Compile Include="Program.cs" />

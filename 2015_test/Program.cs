@@ -587,6 +587,8 @@ namespace ConsoleProxy
                         info = string.Format("user:[{5}] -- {0} :{1} price:{2} break avg:{3} close:{4}", e.Tick.InstrumentID,
                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos, program.trader.Investor);
                         //HttpHelper.HttpPostToWechat(info);
+                        MailService.Notify(LogTitle + " [Info]", info);
+
 
                     }
                     else if (e.Tick.LastPrice < currentInstrumentdata.curAvg && currentInstrumentdata.holder == 1)
@@ -613,6 +615,8 @@ namespace ConsoleProxy
                         info = string.Format("user:[{5}] -- {0} :{1} price:{2} break avg:{3} close:{4}", e.Tick.InstrumentID,
                          e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, pos, program.trader.Investor);
                         //HttpHelper.HttpPostToWechat(info);
+                        MailService.Notify(LogTitle + " [Info]", info);
+
                     }
 
 
@@ -636,8 +640,10 @@ namespace ConsoleProxy
                             info = string.Format("user:[{6}] -- {0} :{1} price:{2} break avg:{3}+span:{4} open:{5}", e.Tick.InstrumentID,
                          e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, e.Tick.LastPrice * instrumentData.span, instrumentData.openvolumn, program.trader.Investor, program.trader.Investor);
                             //HttpHelper.HttpPostToWechat(info);
+                            MailService.Notify(LogTitle + " [Info]", info);
+
                         }
-                       
+
                     }
 
                     else if (e.Tick.LastPrice < currentInstrumentdata.curAvg - e.Tick.LastPrice * instrumentData.span)
@@ -660,6 +666,7 @@ namespace ConsoleProxy
                             info = string.Format("user:[{6}] -- {0} :{1} price:{2} break avg:{3}-span:{4} open:{5}", e.Tick.InstrumentID,
                         e.Tick.UpdateTime, e.Tick.LastPrice, currentInstrumentdata.curAvg, e.Tick.LastPrice * instrumentData.span, instrumentData.openvolumn, program.trader.Investor);
                             //HttpHelper.HttpPostToWechat(info);
+                            MailService.Notify(LogTitle + " [Info]", info);
                         }
                         
                     }
@@ -683,6 +690,8 @@ namespace ConsoleProxy
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRspUserLogin:{0}", e.Value);
                 Log.log(string.Format("OnRspUserLogin:{0}", e.Value));
+                MailService.Notify(LogTitle + " [启动]", program.trader.Investor + " 登录成功");
+
                 if (e.Value == 0)
                     program.quoter.ReqConnect();
             };
@@ -767,6 +776,7 @@ namespace ConsoleProxy
                     string info = string.Format("user[{6}] -- {0},{1},{2},{3},{4},{5}", e.Value.InstrumentID, e.Value.TradingDay, e.Value.TradeTime,
                         e.Value.Price, e.Value.Volume, direction + offsetType, program.trader.Investor);
                     Log.logTrade(info);
+                    MailService.Notify(LogTitle + " [成交回报]", info);
 
                     //HttpHelper.HttpPostToWechat(info);
 
@@ -819,9 +829,10 @@ namespace ConsoleProxy
             program.heartBeatService.startService();
 
             Inst:
+            MailService.Notify(LogTitle + " [启动]", program.trader.Investor + " 启动");
+
             Console.WriteLine(Program.LogTitle + "q:退出  1-BK  2-SP  3-SK  4-BP  5-撤单");
             Console.WriteLine("a-交易所状态  b-委托  c-成交  d-持仓  e-合约  f-权益 g-换合约 h-平所有仓位 s-立刻保存 t-当前值");
-
             DirectionType dire = DirectionType.Buy;
             OffsetType offset = OffsetType.Open;
             char c = Console.ReadKey().KeyChar;
