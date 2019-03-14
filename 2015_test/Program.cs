@@ -44,6 +44,55 @@ namespace ConsoleProxy
 
         private bool isInit = false;
 
+        public void initTrader()
+        {
+            if (isTest)
+            {
+                trader = new Trade("ctp_trade_proxy.dll")
+                {
+                    Server = "tcp://180.168.146.187:10000",
+                    Broker = "9999"// "4040",
+                };
+
+            }
+            else
+            {
+                trader = new Trade("ctp_trade_proxy.dll")
+                {
+                    Server = "tcp://180.166.37.129:41205", //国信
+                    Broker = "8030"
+
+                    //Server = "tcp://222.73.111.150:41205",//" tcp://101.95.8.178:51205",//中建 
+                    //Broker = "9080"// "9999"// "4040",
+                };
+            }
+        }
+
+        public void initQuoter()
+        {
+            if (isTest)
+            {
+                quoter = new Quote("ctp_quote_proxy.dll")
+                {
+                    Server = "tcp://180.168.146.187:10010",
+                    Broker = "9999",
+                };
+
+            }
+            else
+            {
+                quoter = new Quote("ctp_quote_proxy.dll")
+                {
+                    Server = "tcp://180.166.37.129:41213",//国信
+                    Broker = "8030",
+                    //Server = "tcp://222.73.111.150:41213",//"tcp://101.95.8.178:51213",//中建 
+                    //Broker = "9080",
+                };
+            }
+        }
+
+
+
         private static void operatord(Trade t, Quote q, int op, string inst)
         {
             //Console.WriteLine("操作start:{0}: {1}", op, inst);
@@ -284,11 +333,6 @@ namespace ConsoleProxy
             
         }
 
-
-        
-
-        
-
         private void syncData()
         {
             string fileName = FileUtil.getTradeFilePath();
@@ -368,41 +412,11 @@ namespace ConsoleProxy
         {
             Program program = new Program();
             System.Object lockThis = new System.Object();
-
+            HttpHelper.isHoliday();
         //bool isInit = true;
-            Console.WriteLine(Program.LogTitle + "选择接口:\t1-CTP  2-xSpeed  3-Femas  4-股指仿真  5-外汇仿真  6-郑商商品期权仿真");
-            if (isTest)
-            {
-                program.trader = new Trade("ctp_trade_proxy.dll")
-                {
-                    Server = "tcp://180.168.146.187:10000",
-                    Broker = "9999"// "4040",
-                };
-                program.quoter = new Quote("ctp_quote_proxy.dll")
-                {
-                    Server = "tcp://180.168.146.187:10010",
-                    Broker = "9999",
-                };
-
-            }
-            else
-            {
-                program.trader = new Trade("ctp_trade_proxy.dll")
-                {
-                    Server = "tcp://180.166.37.129:41205", //国信
-                    Broker = "8030"
-
-                    //Server = "tcp://222.73.111.150:41205",//" tcp://101.95.8.178:51205",//中建 
-                    //Broker = "9080"// "9999"// "4040",
-                };
-                program.quoter = new Quote("ctp_quote_proxy.dll")
-                {
-                    Server = "tcp://180.166.37.129:41213",//国信
-                    Broker = "8030",
-                    //Server = "tcp://222.73.111.150:41213",//"tcp://101.95.8.178:51213",//中建 
-                    //Broker = "9080",
-                };
-            }
+            Console.WriteLine(Program.LogTitle + "CTP接口:\t启动中.....");
+            program.initTrader();
+            program.initQuoter();
             
             Config config = Config.loadConfig();
             if (config == null)
