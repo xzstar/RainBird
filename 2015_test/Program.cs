@@ -408,11 +408,12 @@ namespace ConsoleProxy
                 subscribeInstruments();
         }
         //输入：q1ctp /t1ctp /q2xspeed /t2speed
-        private static void Main(string[] args)
+        //private static void Main(string[] args)
+        public static void startService()
         {
+            HttpHelper.isHoliday();
             Program program = new Program();
             System.Object lockThis = new System.Object();
-            HttpHelper.isHoliday();
         //bool isInit = true;
             Console.WriteLine(Program.LogTitle + "CTP接口:\t启动中.....");
             program.initTrader();

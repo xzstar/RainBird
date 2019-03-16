@@ -18,6 +18,7 @@ namespace ConsoleProxy
             Config config = null;
             try
             {
+                Console.WriteLine(FileUtil.getConfigFilePath());
                 string text = File.ReadAllText(FileUtil.getConfigFilePath());
                 config = JsonConvert.DeserializeObject<Config>(text);
             }

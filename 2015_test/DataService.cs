@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using MongoDB.Driver.Builders;
 
 namespace ConsoleProxy
 {
@@ -51,25 +52,52 @@ namespace ConsoleProxy
         }
         private void addUnitDataMap(Dictionary<string, List<UnitData>> unitDataMap,string instrument)
         {
-            List<UnitData> unitDataList = MongoDbHepler.GetAll<UnitData>(_mongoDB, instrument + instrument_15m);
-            unitDataMap.Add(instrument, unitDataList);
-            int count = unitDataList.Count;
-            if (count > TOTALSIZE)
+            if (_isAvailable)
             {
-                UnitData lastUnitData = unitDataList.Last();
-                if (lastUnitData.avg_480 <= 0)
+                List<UnitData> unitDataList = MongoDbHepler.GetAll<UnitData>(_mongoDB, instrument + instrument_15m);
+                unitDataMap.Add(instrument, unitDataList);
+                int count = unitDataList.Count;
+                if (count > TOTALSIZE)
                 {
-                    if (count > TOTALSIZE)
+                    UnitData lastUnitData = unitDataList.Last();
+                    if (lastUnitData.avg_480 <= 0)
                     {
-                        double total = 0;
-                        for (int i = 0; i < TOTALSIZE; i++)
+                        if (count > TOTALSIZE)
                         {
-                            total += unitDataList.ElementAt(count - i - 1).close;
+                            double total = 0;
+                            for (int i = 0; i < TOTALSIZE; i++)
+                            {
+                                total += unitDataList.ElementAt(count - i - 1).close;
+                            }
+                            lastUnitData.avg_480 = Math.Round(total / TOTALSIZE, 2);
                         }
-                        lastUnitData.avg_480 = Math.Round(total / TOTALSIZE, 2);
                     }
+                    Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 个数{1} 平均:{2}", instrument, count, lastUnitData.avg_480));
                 }
-                Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 个数{1} 平均:{2}", instrument, count, lastUnitData.avg_480));
+            }
+        }
+
+        public void update(string instrument, UnitData data)
+        {
+            if (_isAvailable)
+            {
+                IMongoQuery query = Query.EQ("datetime", data.datetime);
+                Dictionary<string, BsonValue> dict = new Dictionary<string, BsonValue>();
+                dict.Add("open", data.open);
+                dict.Add("close", data.close);
+                dict.Add("high", data.high);
+                dict.Add("low", data.low);
+                dict.Add("avg_480", data.avg_480);
+                MongoDbHepler.Update(_mongoDB, instrument + instrument_15m, query, dict);
+            }
+
+        }
+
+        public void save(string instrument, UnitData data)
+        {
+            if (_isAvailable)
+            {
+                MongoDbHepler.Insert<UnitData>(_mongoDB, instrument + instrument_15m, data);
             }
         }
     }

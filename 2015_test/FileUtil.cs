@@ -19,7 +19,7 @@ namespace ConsoleProxy
         public const string UnitDataName = "15m.json";
         public const string TickDataName = "TickData.txt";
 
-        public const String TestTag = Program.isTest == true?"Test":"";
+        public const String TestTag = Billow.isTest == true?"Test":"";
     
         private static string buildFilePath(string fileName)
         {
