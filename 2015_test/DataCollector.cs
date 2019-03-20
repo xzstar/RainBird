@@ -33,15 +33,16 @@ namespace ConsoleProxy
         static private string _inst;
         private static double _LastPrice = double.NaN;
 
+        Config config;
         Quote quoter;
         HeartBeatService heartBeatService;
         DataService dataService;
 
         static Object lockFile = new Object();
-        public const bool isTest = false;
-        public const bool withoutDB = true;
+        //public const bool isTest = false;
+        public const bool withoutDB = false;
         //public const bool withoutRedis = true;
-        public static string LogTitle = isTest ? "[测试_数据]" : "[正式_数据]";
+        public static string LogTitle;//= isTest ? "[测试_数据]" : "[正式_数据]";
 
         private Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
         private Dictionary<string, List<UnitData>> unitDataMap = new Dictionary<string, List<UnitData>>();
@@ -49,10 +50,14 @@ namespace ConsoleProxy
 
         private bool isInit = false;
         
-
+        public DataCollector(Config config)
+        {
+            this.config = config;
+            LogTitle = config.isTest ? "[测试_数据]" : "[正式_数据]";
+        }
         public void initQuoter()
         {
-            if (isTest)
+            if (config.isTest)
             {
                 quoter = new Quote("ctp_quote_proxy.dll")
                 {
@@ -282,9 +287,10 @@ namespace ConsoleProxy
                     unitData.datetime = d1.ToString();
                     unitDataList.Add(unitData);
 
-                    Console.WriteLine(string.Format(Program.LogTitle + "new bar 品种{0} 时间:{1} 当前价格:{2}", e.Tick.InstrumentID,
-                       e.Tick.UpdateTime, e.Tick.LastPrice));
-
+                    string info = string.Format(Program.LogTitle + "new bar 品种{0} 时间:{1} 当前价格:{2}", e.Tick.InstrumentID,
+                       e.Tick.UpdateTime, e.Tick.LastPrice);
+                    Console.WriteLine(info);
+                    MailService.Notify(LogTitle + " [info]",info);
                     dataService.save(e.Tick.InstrumentID, unitData);
 
                 }
@@ -349,9 +355,9 @@ namespace ConsoleProxy
             isInit = true;
             heartBeatService = new HeartBeatService(quoter.Investor, false);
             heartBeatService.startService();
+            MailService.Notify(LogTitle + " [启动]", quoter.Investor + " 启动");
 
         Inst:
-            MailService.Notify(LogTitle + " [启动]", quoter.Investor + " 启动");
 
             Console.WriteLine(Program.LogTitle + "q:退出 s:立刻保存");
             char c = Console.ReadKey().KeyChar;

@@ -12,6 +12,8 @@ namespace ConsoleProxy
     {
         public string user;
         public string password;
+        public bool isTest = false;
+        public bool isDataCollector = false;
 
         public static Config loadConfig()
         {

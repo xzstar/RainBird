@@ -13,8 +13,27 @@ namespace ConsoleProxy
         private static void Main(string[] args)
         {
             HttpHelper.isHoliday();
-            DataCollector dataCollector = new DataCollector();
-            dataCollector.startService();
+            Config config = Config.loadConfig();
+            if (config == null)
+            {
+                Console.WriteLine("配置文件不存在");
+                Console.ReadKey();
+            }
+            else
+            {
+                if (config.isDataCollector)
+                {
+                    Console.WriteLine("DataCollector");
+                    DataCollector dataCollector = new DataCollector(config);
+                    dataCollector.startService();
+                }
+                else
+                {
+                    Program program = new Program(config);
+                    program.startService();
+                }
+            }
+                
         }
 
     }

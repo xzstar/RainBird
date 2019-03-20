@@ -105,8 +105,10 @@ namespace ConsoleProxy
             int hour = DateTime.Now.ToLocalTime().Hour;
             int min = DateTime.Now.ToLocalTime().Minute;
 
-            if (DateTime.Now.ToLocalTime().DayOfWeek == DayOfWeek.Saturday ||
-               DateTime.Now.ToLocalTime().DayOfWeek == DayOfWeek.Sunday)
+            //if (DateTime.Now.ToLocalTime().DayOfWeek == DayOfWeek.Saturday ||
+            //   DateTime.Now.ToLocalTime().DayOfWeek == DayOfWeek.Sunday)
+            //    return false;
+            if (HttpHelper.isHoliday())
                 return false;
 
             if (hour == 20 && (min == 58 || min == 59))
