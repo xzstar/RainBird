@@ -14,7 +14,7 @@ namespace ConsoleProxy
         static System.Threading.Timer timer;
         static Dictionary<string, DateTime> lastUpdateTime = new Dictionary<string, DateTime>();
         public static bool flag = true;
-        static object mylock = new object();
+        static Object mylock = new Object();
 
         public static string getInstumentName(string key)
         {
@@ -87,17 +87,43 @@ namespace ConsoleProxy
         static Program _p;
         static System.Threading.Timer timer;
         static System.Threading.Timer oneMinTimer;
-
+        static Object lockObj = new Object();
+        static Object lockOneMinObj = new Object();
+        static long lastTime = 0;
         static void Excute(object obj)
         {
             Thread.CurrentThread.IsBackground = true;
-            _p.checkStatus();
+            lock (lockObj)
+            {
+                long curr = (DateTime.Now.ToUniversalTime().Ticks - 621355968000000000) / 10000000;
+                //至少要间隔2分钟
+                if (curr - lastTime > 120)
+                    _p.checkStatus();
+                else
+                {
+                    string info = String.Format("cur {0}, lastTime {1}", curr, lastTime);
+                    Log.log(DataCollector.LogTitle + info);
+                }
+                lastTime = curr;
+            }
         }
-
         static void ExcuteOneMin(object obj)
         {
             Thread.CurrentThread.IsBackground = true;
-            _p.checkStatusOneMin();
+            lock (lockOneMinObj)
+            {
+                long curr = (DateTime.Now.ToUniversalTime().Ticks - 621355968000000000) / 10000000;
+                //至少要间隔45s
+                if (curr - lastTime > 45)
+                    _p.checkStatusOneMin();
+                else
+                {
+                    string info = String.Format("cur {0}, lastTime {1}", curr, lastTime);
+                    Log.log(DataCollector.LogTitle + info);
+                }
+                lastTime = curr;
+            }
+            
         }
 
         public static void Init(Program program)

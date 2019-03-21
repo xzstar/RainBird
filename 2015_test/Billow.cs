@@ -21,6 +21,11 @@ namespace ConsoleProxy
             }
             else
             {
+                if (config.totalSize > 0)
+                    DataService.TOTALSIZE = config.totalSize;
+                
+                Console.WriteLine("### Total Size is {0} ###", DataService.TOTALSIZE);
+
                 if (config.isDataCollector)
                 {
                     Console.WriteLine("DataCollector");

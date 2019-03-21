@@ -12,6 +12,7 @@ namespace ConsoleProxy
     {
         public string user;
         public string password;
+        public int totalSize = 600;
         public bool isTest = false;
         public bool isDataCollector = false;
 

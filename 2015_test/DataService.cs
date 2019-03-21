@@ -11,7 +11,7 @@ namespace ConsoleProxy
 {
     class DataService
     {
-        public static int TOTALSIZE = 480;
+        public static int TOTALSIZE = 60;
 
         /// <summary>
         /// 数据库连接
