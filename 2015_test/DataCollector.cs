@@ -23,15 +23,20 @@ namespace ConsoleProxy
             lock (lockObj)
             {
                 long curr = (DateTime.Now.ToUniversalTime().Ticks - 621355968000000000) / 10000000;
+                string info = String.Format("cur {0}, lastTime {1}", curr, lastTime);
+                Console.WriteLine(info);
                 //至少要间隔2分钟
-                if(curr-lastTime > 120)
+                if (curr - lastTime > 120)
+                {
                     _p.checkStatus();
+                    lastTime = curr;
+                }
                 else
                 {
-                    string info = String.Format("cur {0}, lastTime {1}", curr, lastTime);
+                    
                     Log.log(DataCollector.LogTitle + info);
                 }
-                lastTime = curr;
+                
             }
         }
         
@@ -39,6 +44,8 @@ namespace ConsoleProxy
         {
             _p = dc;
             timer = new System.Threading.Timer(Excute, null, 60 * 1000, 10 * 60 * 1000);
+            //timer = new System.Threading.Timer(Excute, null, 10 * 1000, 10 * 1000);
+
         }
     }
     class DataCollector
