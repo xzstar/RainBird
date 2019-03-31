@@ -31,4 +31,4 @@ $newAssemblyContent = Get-Content $templateFile |
 If (-not (Test-Path $assemblyFile) -or ((Compare-Object (Get-Content $assemblyFile) $newAssemblyContent))) {
     echo "Injecting Git Version Info to AssemblyInfo.cs"
     $newAssemblyContent > $assemblyFile;       
-}
+}   

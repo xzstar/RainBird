@@ -72,7 +72,7 @@ namespace ConsoleProxy
                             lastUnitData.avg_480 = Math.Round(total / TOTALSIZE, 2);
                         }
                     }
-                    Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 个数{1} 平均:{2}", instrument, count, lastUnitData.avg_480));
+                    Console.WriteLine(string.Format(Log.LogTitle + "品种{0} 个数{1} 平均:{2}", instrument, count, lastUnitData.avg_480));
                 }
             }
         }

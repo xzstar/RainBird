@@ -10,8 +10,8 @@ namespace ConsoleProxy
 {
     class Config
     {
-        public string user;
-        public string password;
+        public string user = "";
+        public string password = "";
         public int totalSize = 600;
         public bool isTest = false;
         public bool isDataCollector = false;

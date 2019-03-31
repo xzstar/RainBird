@@ -9,12 +9,13 @@ namespace ConsoleProxy
 {
     class Log
     {
+        public static string LogTitle = "";
         public static void log(string LogStr)
         {
             StreamWriter sw = null;
             try
             {
-                LogStr = Program.LogTitle + "[" + DateTime.Now.ToLocalTime().ToString() + "]" + LogStr + "\n";
+                LogStr = LogTitle + "[" + DateTime.Now.ToLocalTime().ToString() + "]" + LogStr + "\n";
                 string logFile = FileUtil.getLogFilePath();
                 sw = new StreamWriter(logFile, true);
                 //if (Program.isTest == true)
@@ -44,7 +45,7 @@ namespace ConsoleProxy
             StreamWriter sw = null;
             try
             {
-                LogStr = Program.LogTitle + "[" + DateTime.Now.ToLocalTime().ToString() + "]" + LogStr + "\n";
+                LogStr = LogTitle + "[" + DateTime.Now.ToLocalTime().ToString() + "]" + LogStr + "\n";
                 string logFile = FileUtil.getLogFilePath(instrument);
                 sw = new StreamWriter(logFile, true);
                 //if (Program.isTest == true)

@@ -34,7 +34,7 @@ namespace ConsoleProxy
                 else
                 {
                     
-                    Log.log(DataCollector.LogTitle + info);
+                    Log.log(info);
                 }
                 
             }
@@ -62,7 +62,7 @@ namespace ConsoleProxy
         //public const bool isTest = false;
         public const bool withoutDB = false;
         //public const bool withoutRedis = true;
-        public static string LogTitle;//= isTest ? "[测试_数据]" : "[正式_数据]";
+        //public static string LogTitle;//= isTest ? "[测试_数据]" : "[正式_数据]";
 
         private Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
         private Dictionary<string, List<UnitData>> unitDataMap = new Dictionary<string, List<UnitData>>();
@@ -73,7 +73,7 @@ namespace ConsoleProxy
         public DataCollector(Config config)
         {
             this.config = config;
-            LogTitle = config.isTest ? "[测试_数据]" : "[正式_数据]";
+            Log.LogTitle = config.isTest ? "[测试_数据]" : "[正式_数据]";
         }
         public void initQuoter()
         {
@@ -104,7 +104,7 @@ namespace ConsoleProxy
             {
                 InstrumentData data = tradeData[instrument];
 
-                Console.WriteLine(LogTitle + "品种:{0} 交易:{1} 开仓位:{2} 平仓位:{3} 方向:{4}",
+                Console.WriteLine(Log.LogTitle + "品种:{0} 交易:{1} 开仓位:{2} 平仓位:{3} 方向:{4}",
                     instrument, data.trade ? "YES" : "NO", data.openvolumn, data.closevolumn, data.holder == 0 ? "无" : (data.holder == 1 ? "买" : "卖"));
                 quoter.ReqSubscribeMarketData(instrument);
             }
@@ -112,30 +112,35 @@ namespace ConsoleProxy
 
         public void checkStatus()
         {
-            Console.WriteLine(LogTitle + "checkStatus");
+            string info = String.Format("checkStatus -- isLogoutTimeNow:{0} isLogInTimeNow:{1}  IsLogin:{2}", Utils.isLogoutTimeNow(),
+                Utils.isLogInTimeNow(), quoter.IsLogin);
+            Log.log(info);
+            Console.WriteLine(Log.LogTitle+info);
+
             if (Utils.isLogoutTimeNow() && quoter.IsLogin)
             {
-                Console.WriteLine(LogTitle + "isLogoutTimeNow");
+                unSubscribeInstruments();
+                Console.WriteLine(Log.LogTitle + "isLogoutTimeNow");
                 quoter.ReqUserLogout();
 
                 if (Utils.isOverDayNow())
                 {
-                    Console.WriteLine(LogTitle + "isOverDayNow");
+                    Console.WriteLine(Log.LogTitle + "isOverDayNow");
                     
                 }
 
                 Thread.Sleep(3000);
-                Console.WriteLine(LogTitle + "trade logout");
-                Log.log(LogTitle + "trade logout");
+                Console.WriteLine(Log.LogTitle + "trade logout");
+                Log.log("trade logout");
 
             }
-            else if (Utils.isLogInTimeNow() && !quoter.IsLogin)
+            if (Utils.isLogInTimeNow() && !quoter.IsLogin)
             {
-                Console.WriteLine(LogTitle + "isLogInTimeNow");
+                Console.WriteLine(Log.LogTitle + "isLogInTimeNow");
                 int errorCount = 0;
                 while (!quoter.IsLogin && errorCount < 5)
                 {
-                    Console.WriteLine(LogTitle + "trade ReqConnect");
+                    Console.WriteLine(Log.LogTitle + "trade ReqConnect");
 
                     quoter.ReqConnect();
                     Thread.Sleep(30000);
@@ -144,15 +149,16 @@ namespace ConsoleProxy
 
                     if (!quoter.IsLogin)
                     {
-                        Console.WriteLine(LogTitle + "trade login failed");
-                        Log.log(LogTitle + "trade login failed");
+                        Console.WriteLine(Log.LogTitle + "trade login failed");
+                        Log.log("trade login failed");
                         //HttpHelper.HttpPostToWechat(trader.Investor + " trade login failed");
                     }
                     else
                     {
-                        subscribeInstruments();
-                        Console.WriteLine(LogTitle + "trade login");
-                        Log.log(LogTitle + "trade login");
+                        syncData();
+                        //subscribeInstruments();
+                        Console.WriteLine(Log.LogTitle + "trade login");
+                        Log.log("trade login");
                         //HttpHelper.HttpPostToWechat(trader.Investor + " trade login");
                         break;
                     }
@@ -162,48 +168,63 @@ namespace ConsoleProxy
 
         }
 
+        private void unSubscribeInstruments()
+        {
+            foreach (string instrument in tradeData.Keys)
+            {
+                InstrumentData data = tradeData[instrument];
+
+                quoter.ReqUnSubscribeMarketData(instrument);
+            }
+        }
+
         private void syncData()
         {
-            string fileName = FileUtil.getTradeFilePath();
-            Dictionary<string, InstrumentData> tempData = null;
-            try
+            lock (lockFile)
             {
-                string text = File.ReadAllText(fileName);
-                tempData = JsonConvert.DeserializeObject<Dictionary<string, InstrumentData>>(text);
+                string fileName = FileUtil.getTradeFilePath();
+                Dictionary<string, InstrumentData> tempData = null;
+                try
+                {
+                    string text = File.ReadAllText(fileName);
+                    tempData = JsonConvert.DeserializeObject<Dictionary<string, InstrumentData>>(text);
+                }
+                catch (Exception e)
+                {
+
+                }
+                if (quoter.IsLogin)
+                    unSubscribeInstruments();
+
+                if (tempData != null && tempData.Count != 0)
+                    tradeData = tempData;
+                else if (isInit == false) //第一次启动
+                {
+                    string inst = string.Empty;
+                    Console.WriteLine(Log.LogTitle + "请输入合约:");
+                    inst = Console.ReadLine();
+                    //program.quoter.ReqSubscribeMarketData(inst);
+                    InstrumentData instrumentData = new InstrumentData();
+                    instrumentData.holder = 0;
+                    instrumentData.isToday = false;
+                    instrumentData.lastUpdateTime = "";
+                    instrumentData.price = 0;
+                    instrumentData.span = 0.02;
+                    instrumentData.trade = true;
+                    instrumentData.openvolumn = 1;
+                    instrumentData.closevolumn = 1;
+                    instrumentData.curAvg = 0;
+                    tradeData = new Dictionary<string, InstrumentData>();
+                    tradeData.Add(inst, instrumentData);
+
+                }
+                unitDataMap.Clear();
+                dataService = new DataService(!withoutDB);
+                dataService.initUnitDataMap(unitDataMap, tradeData.Keys);
+
+                if (quoter.IsLogin)
+                    subscribeInstruments();
             }
-            catch (Exception e)
-            {
-
-            }
-
-            if (tempData != null && tempData.Count != 0)
-                tradeData = tempData;
-            else if (isInit == false) //第一次启动
-            {
-                string inst = string.Empty;
-                Console.WriteLine(LogTitle + "请输入合约:");
-                inst = Console.ReadLine();
-                //program.quoter.ReqSubscribeMarketData(inst);
-                InstrumentData instrumentData = new InstrumentData();
-                instrumentData.holder = 0;
-                instrumentData.isToday = false;
-                instrumentData.lastUpdateTime = "";
-                instrumentData.price = 0;
-                instrumentData.span = 0.02;
-                instrumentData.trade = true;
-                instrumentData.openvolumn = 1;
-                instrumentData.closevolumn = 1;
-                instrumentData.curAvg = 0;
-                tradeData = new Dictionary<string, InstrumentData>();
-                tradeData.Add(inst, instrumentData);
-
-            }
-            unitDataMap.Clear();
-            dataService = new DataService(!withoutDB);
-            dataService.initUnitDataMap(unitDataMap, tradeData.Keys);
-
-            if (quoter.IsLogin)
-                subscribeInstruments();
         }
 
         public void init()
@@ -231,7 +252,7 @@ namespace ConsoleProxy
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnFrontConnected");
                 Log.log("OnFrontConnected");
-                MailService.Notify(LogTitle + " [启动]", quoter.Investor + " 前置主机连接成功");
+                MailService.Notify(Log.LogTitle + " [启动]", quoter.Investor + " 前置主机连接成功");
 
                 //HttpHelper.HttpPostToWechat(program.trader.Investor + " OnFrontConnected");
                 if (Utils.isTradingTimeNow() || Utils.isLogInTimeNow())
@@ -241,7 +262,7 @@ namespace ConsoleProxy
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRspUserLogin:{0}", e.Value);
                 Log.log(string.Format("OnRspUserLogin:{0}", e.Value));
-                MailService.Notify(LogTitle + " [启动]", quoter.Investor + " 登录成功");
+                MailService.Notify(Log.LogTitle + " [启动]", quoter.Investor + " 登录成功");
 
             };
 
@@ -249,7 +270,7 @@ namespace ConsoleProxy
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRspUserLogout:{0}", e.Value);
                 Log.log(string.Format("OnRspUserLogout:{0}", e.Value));
-                MailService.Notify(LogTitle + " [退出]", quoter.Investor + " 退出登录");
+                MailService.Notify(Log.LogTitle + " [退出]", quoter.Investor + " 退出登录");
 
             };
 
@@ -257,7 +278,7 @@ namespace ConsoleProxy
             {
                 Console.WriteLine("[" + DateTime.Now.ToLocalTime().ToString() + "]" + "OnRtnError:{0}=>{1}", e.ErrorID, e.ErrorMsg);
                 Log.log(string.Format("OnRtnError:{0}=>{1}", e.ErrorID, e.ErrorMsg));
-                MailService.Notify(LogTitle + " [错误]", quoter.Investor + " "+e.ErrorMsg);
+                MailService.Notify(Log.LogTitle + " [错误]", quoter.Investor + " "+e.ErrorMsg);
             };
 
             quoter.OnRtnTick += (sender, e) =>
@@ -307,10 +328,10 @@ namespace ConsoleProxy
                     unitData.datetime = d1.ToString();
                     unitDataList.Add(unitData);
 
-                    string info = string.Format(LogTitle + "new bar 品种{0} 时间:{1} 当前价格:{2}", e.Tick.InstrumentID,
+                    string info = string.Format(Log.LogTitle + "new bar 品种{0} 时间:{1} 当前价格:{2}", e.Tick.InstrumentID,
                        e.Tick.UpdateTime, e.Tick.LastPrice);
                     Console.WriteLine(info);
-                    MailService.Notify(LogTitle + " [info]",info);
+                    MailService.Notify(Log.LogTitle + " [info]",info);
                     dataService.save(e.Tick.InstrumentID, unitData);
 
                 }
@@ -358,7 +379,7 @@ namespace ConsoleProxy
 
         public void startService()
         {
-            Console.WriteLine(DataCollector.LogTitle + "CTP接口:\t启动中.....");
+            Console.WriteLine(Log.LogTitle + "CTP接口:\t启动中.....");
             init();
             quoter.ReqConnect();
             Thread.Sleep(3000);
@@ -375,11 +396,11 @@ namespace ConsoleProxy
             isInit = true;
             heartBeatService = new HeartBeatService(quoter.Investor, false);
             heartBeatService.startService();
-            MailService.Notify(LogTitle + " [启动]", quoter.Investor + " 启动");
+            MailService.Notify(Log.LogTitle + " [启动]", quoter.Investor + " 启动");
 
         Inst:
 
-            Console.WriteLine(LogTitle + "q:退出 s:立刻保存");
+            Console.WriteLine(Log.LogTitle + "q:退出 s:立刻保存");
             char c = Console.ReadKey().KeyChar;
             switch (c)
             {

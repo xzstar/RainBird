@@ -75,11 +75,13 @@ namespace ConsoleProxy
                 {
                     Console.WriteLine("DataCollector");
                     DataCollector dataCollector = new DataCollector(config);
+                    //Log.LogTitle = DataCollector.LogTitle;
                     dataCollector.startService();
                 }
                 else
                 {
                     Program program = new Program(config);
+                    //Log.LogTitle = Program.LogTitle;
                     program.startService();
                 }
             }

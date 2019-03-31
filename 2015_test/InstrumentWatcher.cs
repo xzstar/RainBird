@@ -96,15 +96,18 @@ namespace ConsoleProxy
             lock (lockObj)
             {
                 long curr = (DateTime.Now.ToUniversalTime().Ticks - 621355968000000000) / 10000000;
+                string info = String.Format("cur {0}, lastTime {1}", curr, lastTime);
+                Console.WriteLine(info);
                 //至少要间隔2分钟
                 if (curr - lastTime > 120)
+                {
                     _p.checkStatus();
+                    lastTime = curr;
+                }
                 else
                 {
-                    string info = String.Format("cur {0}, lastTime {1}", curr, lastTime);
-                    Log.log(DataCollector.LogTitle + info);
+                    Log.log(info);
                 }
-                lastTime = curr;
             }
         }
         static void ExcuteOneMin(object obj)
@@ -115,13 +118,16 @@ namespace ConsoleProxy
                 long curr = (DateTime.Now.ToUniversalTime().Ticks - 621355968000000000) / 10000000;
                 //至少要间隔45s
                 if (curr - lastTime > 45)
+                {
                     _p.checkStatusOneMin();
+                    lastTime = curr;
+                }
                 else
                 {
-                    string info = String.Format("cur {0}, lastTime {1}", curr, lastTime);
-                    Log.log(DataCollector.LogTitle + info);
+                    //string info = String.Format("cur {0}, lastTime {1}", curr, lastTime);
+                    //Log.log(DataCollector.LogTitle + info);
                 }
-                lastTime = curr;
+                
             }
             
         }

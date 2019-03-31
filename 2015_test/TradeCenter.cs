@@ -436,7 +436,7 @@ namespace ConsoleProxy
         {
             
             //Console.WriteLine("操作start:{0}: {1}", op, inst);
-            Log.log(string.Format(Program.LogTitle + "操作start:{0}: {1}", tradeItem.mOperator, tradeItem.mInstrument), tradeItem.mInstrument);
+            Log.log(string.Format(Log.LogTitle + "操作start:{0}: {1}", tradeItem.mOperator, tradeItem.mInstrument), tradeItem.mInstrument);
             string operation = string.Empty;
 
 
@@ -477,8 +477,8 @@ namespace ConsoleProxy
                     
             }
             
-            Console.WriteLine(Program.LogTitle + "操作:{0}: {1}", operation, tradeItem.mInstrument);
-            Log.log(string.Format(Program.LogTitle + "操作:{0}: {1}", operation, tradeItem.mInstrument), tradeItem.mInstrument);
+            Console.WriteLine(Log.LogTitle + "操作:{0}: {1}", operation, tradeItem.mInstrument);
+            Log.log(string.Format("操作:{0}: {1}", operation, tradeItem.mInstrument), tradeItem.mInstrument);
             OrderType ot = OrderType.Limit;
                
             MarketData tick;
